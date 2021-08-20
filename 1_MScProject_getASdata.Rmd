@@ -9,7 +9,6 @@ output: html_document
 
 #check working directory
 knitr::opts_chunk$set(echo = TRUE)
-knitr::opts_knit$set(root.dir = "C:/Users/myria/Documents/Desktop/GitHub")
 getwd()
 ```
 
