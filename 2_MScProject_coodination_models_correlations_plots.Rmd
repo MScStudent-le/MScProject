@@ -1,0 +1,3789 @@
+---
+title: "Coordination Success, Models, Correlations, Plots"
+author: "MScStudent"
+date: "20/08/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+## read in data (for the generation of the data collection file, see the frist script)
+```{r}
+#read in combined German and English data with AS
+alldata <- read.csv('alldatawithAS_E&G.csv', sep=",",
+                    header=TRUE, 
+                    na.strings=c("NA","na"), 
+                    stringsAsFactors = TRUE) #unlemmatized
+
+#alldata_lemma <- read.csv('lemmatized_alldata.csv', sep=",", #lemmatized  
+                   # header=TRUE, 
+                   # na.strings=c("NA","na"), 
+                   # stringsAsFactors = TRUE) 
+
+#unlemmatized version for the reasons explained in the thesis
+```
+
+
+```{r suppressPackageStartupMessages}
+## Load packages
+
+suppressPackageStartupMessages(library(data.table))
+suppressPackageStartupMessages(library(stats))
+suppressPackageStartupMessages(library(lme4))
+suppressPackageStartupMessages(library(glmmTMB))
+suppressPackageStartupMessages(library(MuMIn))
+suppressPackageStartupMessages(library(ggplot2))
+suppressPackageStartupMessages(library(boot))
+suppressPackageStartupMessages(library(Rmisc))
+suppressPackageStartupMessages(library(tidyr))
+suppressPackageStartupMessages(library(dplyr))
+suppressPackageStartupMessages(library(pander))
+suppressPackageStartupMessages(library(knitr))
+suppressPackageStartupMessages(library(magrittr))
+suppressPackageStartupMessages(library(plotly))
+suppressPackageStartupMessages(library(AER))
+suppressPackageStartupMessages(library(r2glmm))
+suppressPackageStartupMessages(library(ggthemes))
+suppressPackageStartupMessages(library(ggpubr))
+```
+
+
+
+#get Coordination Success Scores (correctness scores)
+#by-item for each try and each camera condition
+(face cond (camera signaller=on))
+
+#first try
+```{r}
+
+coordination_score_vector_face <-c()
+target_vector <- unique(alldata$target)
+for (i in (1:length(target_vector))){ 
+current_target <- target_vector[i]
+group.data <- alldata[which(alldata$target == current_target & alldata$condition == 'face'),]
+cues <- unique(group.data$first_cue)
+cue_vector <- c()
+occurrences_vector <- c()
+success_vector <- c()
+for (inner_index in (1:length(cues))){
+  current_cue <- as.character(cues[inner_index])
+  occurrences <- length(which(group.data$first_cue == current_cue))
+  number_of_successes <- length(which((group.data$first_cue == current_cue) & (group.data$numberoftries == 1)))
+  cue_vector <- append(cue_vector, current_cue)
+  occurrences_vector <- append(occurrences_vector, occurrences)
+  success_vector <- append(success_vector, number_of_successes)
+}
+coordination_score <- sum((occurrences_vector/length(!is.na(group.data$first_cue)))*(success_vector/length(!is.na(group.data$first_cue))))
+coordination_score_vector_face <- append(coordination_score_vector_face, coordination_score)
+}
+names(coordination_score_vector_face) <- target_vector
+coordination_score_vector_face
+
+
+
+#by item (=target) for non-face condition, 1st try
+
+coordination_score_vector_nonface <-c()
+target_vector <- unique(alldata$target)
+for (i in (1:length(target_vector))){ 
+current_target <- target_vector[i]
+group.data <- alldata[which(alldata$target == current_target & alldata$condition == 'non-face'),]
+cues <- unique(group.data$first_cue)
+cue_vector <- c()
+occurrences_vector <- c()
+success_vector <- c()
+for (inner_index in (1:length(cues))){
+  current_cue <- as.character(cues[inner_index])
+  occurrences <- length(which(group.data$first_cue == current_cue))
+  number_of_successes <- length(which((group.data$first_cue == current_cue) & (group.data$numberoftries == 1)))
+  cue_vector <- append(cue_vector, current_cue)
+  occurrences_vector <- append(occurrences_vector, occurrences)
+  success_vector <- append(success_vector, number_of_successes)
+}
+coordination_score <- sum((occurrences_vector/length(!is.na(group.data$first_cue)))*(success_vector/length(!is.na(group.data$first_cue)))) #first divided by nb signallers prod each of the signals, #then divided by nb guessers correctly guessing the item given each of the signals/nb guessers correctly guessing the target given each of the signals
+coordination_score_vector_nonface <- append(coordination_score_vector_nonface, coordination_score) 
+}
+names(coordination_score_vector_nonface) <- target_vector
+coordination_score_vector_nonface #40
+```
+
+#second try
+```{r}
+#by-item, face cond (camera signaller=on)
+
+coordination_score_vector_face2 <-c()
+target_vector <- unique(alldata$target)
+for (i in (1:length(target_vector))){ 
+current_target <- target_vector[i]
+group.data <- alldata[which(alldata$target == current_target & alldata$condition == 'face'),]
+cues <- unique(group.data$second_cue)
+cue_vector <- c()
+occurrences_vector <- c()
+success_vector <- c()
+for (inner_index in (1:length(cues))){
+  current_cue <- as.character(cues[inner_index])
+  occurrences <- length(which(group.data$second_cue == current_cue))
+  number_of_successes <- length(which((group.data$second_cue == current_cue) & (group.data$numberoftries == 2)))
+  cue_vector <- append(cue_vector, current_cue)
+  occurrences_vector <- append(occurrences_vector, occurrences)
+  success_vector <- append(success_vector, number_of_successes)
+}
+coordination_score <- sum((occurrences_vector/length(!is.na(group.data$first_cue)))*(success_vector/length(!is.na(group.data$first_cue)))) #still first cue bc if na, then non-valid trial
+coordination_score_vector_face2 <- append(coordination_score_vector_face2, coordination_score)
+}
+names(coordination_score_vector_face2) <- target_vector
+coordination_score_vector_face2
+
+#by item (=target) for non-face condition
+
+coordination_score_vector_nonface2 <-c()
+target_vector <- unique(alldata$target)
+for (i in (1:length(target_vector))){ 
+current_target <- target_vector[i]
+group.data <- alldata[which(alldata$target == current_target & alldata$condition == 'non-face'),]
+cues <- unique(group.data$second_cue)
+cue_vector <- c()
+occurrences_vector <- c()
+success_vector <- c()
+for (inner_index in (1:length(cues))){
+  current_cue <- as.character(cues[inner_index])
+  occurrences <- length(which(group.data$second_cue == current_cue))
+  number_of_successes <- length(which((group.data$second_cue == current_cue) & (group.data$numberoftries == 2)))
+  cue_vector <- append(cue_vector, current_cue)
+  occurrences_vector <- append(occurrences_vector, occurrences)
+  success_vector <- append(success_vector, number_of_successes)
+}
+coordination_score <- sum((occurrences_vector/length(!is.na(group.data$first_cue)))*(success_vector/length(!is.na(group.data$first_cue))))
+coordination_score_vector_nonface2 <- append(coordination_score_vector_nonface2, coordination_score)
+}
+names(coordination_score_vector_nonface2) <- target_vector
+coordination_score_vector_nonface2
+
+```
+
+
+#third try
+```{r}
+#by-item, face cond (camera signaller=on)
+
+coordination_score_vector_face3 <-c()
+target_vector <- unique(alldata$target)
+for (i in (1:length(target_vector))){ 
+current_target <- target_vector[i]
+group.data <- alldata[which(alldata$target == current_target & alldata$condition == 'face'),]
+cues <- unique(group.data$third_cue)
+cue_vector <- c()
+occurrences_vector <- c()
+success_vector <- c()
+for (inner_index in (1:length(cues))){
+  current_cue <- as.character(cues[inner_index])
+  occurrences <- length(which(group.data$third_cue == current_cue))
+  number_of_successes <- length(which((group.data$third_cue == current_cue) & (group.data$numberoftries == 3)))
+  cue_vector <- append(cue_vector, current_cue)
+  occurrences_vector <- append(occurrences_vector, occurrences)
+  success_vector <- append(success_vector, number_of_successes)
+}
+coordination_score <- sum((occurrences_vector/length(!is.na(group.data$first_cue)))*(success_vector/length(!is.na(group.data$first_cue)))) #still first cue bc if na, then non-valid trial
+coordination_score_vector_face3 <- append(coordination_score_vector_face3, coordination_score)
+}
+names(coordination_score_vector_face3) <- target_vector
+coordination_score_vector_face3
+
+#by item (=target) for non-face condition
+
+coordination_score_vector_nonface3 <-c()
+target_vector <- unique(alldata$target)
+for (i in (1:length(target_vector))){ 
+current_target <- target_vector[i]
+group.data <- alldata[which(alldata$target == current_target & alldata$condition == 'non-face'),]
+cues <- unique(group.data$third_cue)
+cue_vector <- c()
+occurrences_vector <- c()
+success_vector <- c()
+for (inner_index in (1:length(cues))){
+  current_cue <- as.character(cues[inner_index])
+  occurrences <- length(which(group.data$third_cue == current_cue))
+  number_of_successes <- length(which((group.data$third_cue == current_cue) & (group.data$numberoftries == 3)))
+  cue_vector <- append(cue_vector, current_cue)
+  occurrences_vector <- append(occurrences_vector, occurrences)
+  success_vector <- append(success_vector, number_of_successes)
+}
+coordination_score <- sum((occurrences_vector/length(!is.na(group.data$first_cue)))*(success_vector/length(!is.na(group.data$first_cue))))
+coordination_score_vector_nonface3 <- append(coordination_score_vector_nonface3, coordination_score)
+}
+names(coordination_score_vector_nonface3) <- target_vector
+coordination_score_vector_nonface3
+```
+
+
+#fourth try
+```{r}
+#by-item, face cond (camera signaller=on)
+
+coordination_score_vector_face4 <-c()
+target_vector <- unique(alldata$target)
+for (i in (1:length(target_vector))){ 
+current_target <- target_vector[i]
+group.data <- alldata[which(alldata$target == current_target & alldata$condition == 'face'),]
+cues <- unique(group.data$fourth_cue)
+cue_vector <- c()
+occurrences_vector <- c()
+success_vector <- c()
+for (inner_index in (1:length(cues))){
+  current_cue <- as.character(cues[inner_index])
+  occurrences <- length(which(group.data$fourth_cue == current_cue))
+  number_of_successes <- length(which((group.data$fourth_cue == current_cue) & (group.data$numberoftries == 4)))
+  cue_vector <- append(cue_vector, current_cue)
+  occurrences_vector <- append(occurrences_vector, occurrences)
+  success_vector <- append(success_vector, number_of_successes)
+}
+coordination_score <- sum((occurrences_vector/length(!is.na(group.data$first_cue)))*(success_vector/length(!is.na(group.data$first_cue)))) #still first cue bc if na, then non-valid trial
+coordination_score_vector_face4 <- append(coordination_score_vector_face4, coordination_score)
+}
+names(coordination_score_vector_face4) <- target_vector
+coordination_score_vector_face4
+
+#by item (=target) for non-face condition
+
+coordination_score_vector_nonface4 <-c()
+target_vector <- unique(alldata$target)
+for (i in (1:length(target_vector))){ 
+current_target <- target_vector[i]
+group.data <- alldata[which(alldata$target == current_target & alldata$condition == 'non-face'),]
+cues <- unique(group.data$fourth_cue)
+cue_vector <- c()
+occurrences_vector <- c()
+success_vector <- c()
+for (inner_index in (1:length(cues))){
+  current_cue <- as.character(cues[inner_index])
+  occurrences <- length(which(group.data$fourth_cue == current_cue))
+  number_of_successes <- length(which((group.data$fourth_cue == current_cue) & (group.data$numberoftries == 4)))
+  cue_vector <- append(cue_vector, current_cue)
+  occurrences_vector <- append(occurrences_vector, occurrences)
+  success_vector <- append(success_vector, number_of_successes)
+}
+coordination_score <- sum((occurrences_vector/length(!is.na(group.data$first_cue)))*(success_vector/length(!is.na(group.data$first_cue))))
+coordination_score_vector_nonface4 <- append(coordination_score_vector_nonface4, coordination_score)
+}
+names(coordination_score_vector_nonface4) <- target_vector
+coordination_score_vector_nonface4
+```
+
+
+#fifth/final try
+
+```{r}
+#by-item, face cond (camera signaller=on)
+
+coordination_score_vector_face5 <-c()
+target_vector <- unique(alldata$target)
+for (i in (1:length(target_vector))){ 
+current_target <- target_vector[i]
+group.data <- alldata[which(alldata$target == current_target & alldata$condition == 'face'),]
+cues <- unique(group.data$fifth_cue)
+cue_vector <- c()
+occurrences_vector <- c()
+success_vector <- c()
+for (inner_index in (1:length(cues))){
+  current_cue <- as.character(cues[inner_index])
+  occurrences <- length(which(group.data$fifth_cue == current_cue))
+  number_of_successes <- length(which((group.data$fifth_cue == current_cue) & (group.data$numberoftries == 5)))
+  cue_vector <- append(cue_vector, current_cue)
+  occurrences_vector <- append(occurrences_vector, occurrences)
+  success_vector <- append(success_vector, number_of_successes)
+}
+coordination_score <- sum((occurrences_vector/length(!is.na(group.data$first_cue)))*(success_vector/length(!is.na(group.data$first_cue)))) #still first cue bc if na, then non-valid trial
+coordination_score_vector_face5 <- append(coordination_score_vector_face5, coordination_score)
+}
+names(coordination_score_vector_face5) <- target_vector
+coordination_score_vector_face5
+
+#by item (=target) for non-face condition
+
+coordination_score_vector_nonface5 <-c()
+target_vector <- unique(alldata$target)
+for (i in (1:length(target_vector))){ 
+current_target <- target_vector[i]
+group.data <- alldata[which(alldata$target == current_target & alldata$condition == 'non-face'),]
+cues <- unique(group.data$fifth_cue)
+cue_vector <- c()
+occurrences_vector <- c()
+success_vector <- c()
+for (inner_index in (1:length(cues))){
+  current_cue <- as.character(cues[inner_index])
+  occurrences <- length(which(group.data$fifth_cue == current_cue))
+  number_of_successes <- length(which((group.data$fifth_cue == current_cue) & (group.data$numberoftries == 5)))
+  cue_vector <- append(cue_vector, current_cue)
+  occurrences_vector <- append(occurrences_vector, occurrences)
+  success_vector <- append(success_vector, number_of_successes)
+}
+coordination_score <- sum((occurrences_vector/length(!is.na(group.data$first_cue)))*(success_vector/length(!is.na(group.data$first_cue))))
+coordination_score_vector_nonface5 <- append(coordination_score_vector_nonface5, coordination_score)
+}
+names(coordination_score_vector_nonface5) <- target_vector
+coordination_score_vector_nonface5
+```
+
+
+
+
+
+
+
+#Plot first try
+```{r}
+#in ascending order
+coordination_score_vector_nonface_sorted <- coordination_score_vector_nonface[order(coordination_score_vector_nonface, decreasing=FALSE)]
+coordination_score_vector_face_sorted <- coordination_score_vector_face[names(coordination_score_vector_nonface_sorted)]
+
+names_targets=as.character(names(coordination_score_vector_nonface_sorted))
+names(names_targets) <- c(1:length(names_targets))
+names_targets[25] <- "Brücke"
+names_targets[35] <- "Rüstung"
+data_ggplot1 <- data.frame(names_targets=c(names_targets, names_targets), condition=c(rep("non-face", length(names_targets)), rep("face", length(names_targets))), coordination_score=c(coordination_score_vector_nonface_sorted, coordination_score_vector_face_sorted))
+data_ggplot1$names_targets <- factor(data_ggplot1$names_targets, levels=names_targets)
+fig1 <- ggplot(data_ggplot1, aes(x=names_targets, y=coordination_score, color=condition)) +
+  geom_point() + 
+  theme_classic() + 
+  scale_x_discrete(guide = guide_axis(angle = 90)) + 
+  ylab("Coordination Success") + xlab("Target Items")
+fig1
+````
+
+#plot 2nd try
+
+```{r}
+coordination_score_vector_nonface2_sorted <- coordination_score_vector_nonface2[order(coordination_score_vector_nonface2, decreasing=FALSE)]
+coordination_score_vector_face2_sorted <- coordination_score_vector_face2[names(coordination_score_vector_nonface2_sorted)]
+
+names_targets=as.character(names(coordination_score_vector_nonface2_sorted))
+names(names_targets) <- c(1:length(names_targets))
+names_targets[23] <- "Brücke"
+names_targets[15] <- "Rüstung"
+data_ggplot2 <- data.frame(names_targets=c(names_targets, names_targets), condition=c(rep("non-face", length(names_targets)), rep("face", length(names_targets))), coordination_score=c(coordination_score_vector_nonface2_sorted, coordination_score_vector_face2_sorted))
+data_ggplot2$names_targets <- factor(data_ggplot2$names_targets, levels=names_targets)
+fig2 <- ggplot(data_ggplot2, aes(x=names_targets, y=coordination_score, color=condition)) +
+  geom_point(alpha=0.6) + 
+  theme_classic() + 
+  scale_x_discrete(guide = guide_axis(angle = 90)) + 
+  ylab("Coordination Success") + xlab("Target Items")
+fig2
+```
+
+#plot 3rd try
+```{r}
+coordination_score_vector_nonface3_sorted <- coordination_score_vector_nonface3[order(coordination_score_vector_nonface3, decreasing=FALSE)]
+coordination_score_vector_face3_sorted <- coordination_score_vector_face3[names(coordination_score_vector_nonface3_sorted)]
+
+names_targets=as.character(names(coordination_score_vector_nonface3_sorted))
+names(names_targets) <- c(1:length(names_targets))
+names_targets[25] <- "Brücke"
+names_targets[35] <- "Rüstung"
+data_ggplot3 <- data.frame(names_targets=c(names_targets, names_targets), condition=c(rep("non-face", length(names_targets)), rep("face", length(names_targets))), coordination_score=c(coordination_score_vector_nonface3_sorted, coordination_score_vector_face3_sorted))
+data_ggplot3$names_targets <- factor(data_ggplot3$names_targets, levels=names_targets)
+fig3 <- ggplot(data_ggplot3, aes(x=names_targets, y=coordination_score, color=condition)) +
+  geom_point(alpha=0.6) + 
+  theme_classic() + 
+  scale_x_discrete(guide = guide_axis(angle = 90)) + 
+  ylab("Coordination Success") + xlab("Target Items")
+fig3
+
+```
+
+
+
+#plot 4th try
+```{r}
+#in ascending order
+coordination_score_vector_nonface4_sorted <- coordination_score_vector_nonface4[order(coordination_score_vector_nonface4, decreasing=FALSE)]
+coordination_score_vector_face4_sorted <- coordination_score_vector_face4[names(coordination_score_vector_nonface4_sorted)]
+
+names_targets=as.character(names(coordination_score_vector_nonface4_sorted))
+names(names_targets) <- c(1:length(names_targets))
+names_targets[38] <- "Brücke"
+names_targets[32] <- "Rüstung"
+data_ggplot4 <- data.frame(names_targets=c(names_targets, names_targets), condition=c(rep("non-face", length(names_targets)), rep("face", length(names_targets))), coordination_score=c(coordination_score_vector_nonface4_sorted, coordination_score_vector_face4_sorted))
+data_ggplot4$names_targets <- factor(data_ggplot4$names_targets, levels=names_targets)
+fig4 <- ggplot(data_ggplot4, aes(x=names_targets, y=coordination_score, color=condition)) +
+  geom_point(alpha=0.6) + 
+  theme_classic() + 
+  scale_x_discrete(guide = guide_axis(angle = 90)) + 
+  ylab("Coordination Success") + xlab("Target Items")
+fig4
+
+```
+
+
+
+#Plot fifth try
+```{r}
+coordination_score_vector_nonface5_sorted <- coordination_score_vector_nonface5[order(coordination_score_vector_nonface5, decreasing=FALSE)]
+coordination_score_vector_face5_sorted <- coordination_score_vector_face5[names(coordination_score_vector_nonface5_sorted)]
+
+names_targets=as.character(names(coordination_score_vector_nonface5_sorted))
+names(names_targets) <- c(1:length(names_targets))
+names_targets[39] <- "Brücke"
+names_targets[33] <- "Rüstung"
+data_ggplot5 <- data.frame(names_targets=c(names_targets, names_targets), condition=c(rep("non-face", length(names_targets)), rep("face", length(names_targets))), coordination_score=c(coordination_score_vector_nonface5_sorted, coordination_score_vector_face5_sorted))
+data_ggplot5$names_targets <- factor(data_ggplot5$names_targets, levels=names_targets)
+fig5 <- ggplot(data_ggplot5, aes(x=names_targets, y=coordination_score, color=condition)) +
+  geom_point(alpha=0.6) + 
+  theme_classic() + 
+  scale_x_discrete(guide = guide_axis(angle = 90)) + 
+  ylab("Coordination Success") + xlab("Target Items")
+fig5
+
+```
+
+
+
+
+*By Pair Correctness Scores for each camera condition*
+```{r}
+#face
+pair_score_vector_face_pair <-c()
+pair_vector <- unique(alldata$pair)
+for (i in (1:length(pair_vector))){ 
+current_pair <- pair_vector[i]
+group.data <- alldata[which(alldata$pair == current_pair & alldata$condition == 'face'),]
+number_of_targets_guessed_in_all_turns <- length(unique(group.data$target))
+print(number_of_targets_guessed_in_all_turns)#sanity check #always 20 bc all guessed by fifth cue
+print(as.numeric(group.data$numberoftries)) #sanity check
+pair_score <- number_of_targets_guessed_in_all_turns/sum(group.data$numberoftries, na.rm = TRUE)
+pair_score_vector_face_pair <- append(pair_score_vector_face_pair, pair_score)
+}
+names(pair_score_vector_face_pair) <- pair_vector
+pair_score_vector_face_pair
+
+na.omit(pair_score_vector_face_pair)
+
+names_pairs <- names(pair_score_vector_face_pair)
+names_pairs
+
+
+#non-face
+
+pair_score_vector_nonface_pair <-c()
+pair_vector <- unique(alldata$pair)
+for (i in (1:length(pair_vector))){ 
+current_pair <- pair_vector[i]
+group.data <- alldata[which(alldata$pair == current_pair & alldata$condition == 'non-face'),]
+number_of_targets_guessed_in_all_turns <- length(unique(group.data$target))
+print(number_of_targets_guessed_in_all_turns)#sanity check
+print(group.data$numberoftries) #sanity check
+pair_score <- number_of_targets_guessed_in_all_turns/sum(group.data$numberoftries, na.rm=TRUE)
+pair_score_vector_nonface_pair <- append(pair_score_vector_nonface_pair, pair_score)
+}
+names(pair_score_vector_nonface_pair) <- pair_vector
+pair_score_vector_nonface_pair
+```
+
+
+#By-pair plots
+*in ascending order*
+```{r}
+pair_score_vector_face_pair_without_NaN <- pair_score_vector_face_pair[which(!is.na(pair_score_vector_face_pair))]
+pair_score_vector_face_pair_without_NaN_sorted <- pair_score_vector_face_pair_without_NaN[order(pair_score_vector_face_pair_without_NaN, decreasing = FALSE)]
+
+pair_score_vector_nonface_pair_without_NaN <- pair_score_vector_nonface_pair[which(!is.na(pair_score_vector_nonface_pair))]
+pair_score_vector_nonface_pair_without_NaN_sorted <- pair_score_vector_nonface_pair_without_NaN[order(pair_score_vector_nonface_pair_without_NaN, decreasing = FALSE)]
+png(filename="pairlinear.png")
+fig_face <- plot_ly(type='scatter') #(type='scatter')
+
+fig_face <- fig_face %>% add_trace(x=1:length(pair_score_vector_face_pair_without_NaN_sorted), y = pair_score_vector_face_pair_without_NaN_sorted, name = "face", marker=list(color='salmon', size=7, line = list(color = 'black', width = 1.0)), na.omit)
+
+fig_face <- fig_face %>% add_trace(x=c(1:length(pair_score_vector_nonface_pair_without_NaN_sorted))+length(pair_score_vector_face_pair_without_NaN_sorted), y = pair_score_vector_nonface_pair_without_NaN_sorted, name = "non-face", marker=list(color='mediumblue', size=7, line = list(color = 'black', width = 1.0)), na.omit)
+
+fig_face <- fig_face %>% add_trace(x=length(pair_score_vector_face_pair_without_NaN_sorted)/2 , type='box', y = pair_score_vector_face_pair_without_NaN_sorted, name = NULL, marker=list(color='salmon', opacity = 0), na.omit, showlegend = F)
+
+fig_face <- fig_face %>% add_trace(x=length(pair_score_vector_face_pair_without_NaN_sorted)+(length(pair_score_vector_nonface_pair_without_NaN_sorted)/2) , type='box', y = pair_score_vector_nonface_pair_without_NaN_sorted, name = NULL, marker=list(color='mediumblue', opacity = 0), na.omit, showlegend = F)
+
+fig_face <- fig_face %>% layout(xaxis = list(title = "Pairs by Camera Condition",  showgrid=F,zeroline=F,showline=T, showticklabels=F),#, ),    
+      yaxis = list(title = "Coordination Success", showline=T, showgrid=F, range=(c(0.3,1)), showticks=T, showticklabels = TRUE)) 
+
+
+fig_face #screenshot! in plotly
+
+```
+
+*clouds (participation order)*
+```{r}
+fig_face <- plot_ly(type='scatter') #(type='scatter')
+fig_face <- fig_face %>% add_trace(x=1:28, y = pair_score_vector_face_pair, name = "face", marker=list(color='salmon'), na.omit)
+fig_face <- fig_face %>% add_trace(x=30:57, y = pair_score_vector_nonface_pair, name = "non-face", marker=list(color='mediumblue'), na.omit)
+
+fig_face <- fig_face %>% layout(xaxis = list(title = "Pairs by Camera Condition",  showgrid=F,zeroline=F,showline=T, showticklabels=F),#, ),    
+      yaxis = list(title = "Coordination Success", showline=T, showgrid=F, range=(c(0.3,1)), showticks=T, showticklabels = TRUE)) 
+  
+fig_face
+```
+
+*by pair language plot*
+
+```{r}
+# German
+pair_score_vector_german_pair <-c()
+pair_vector <- unique(alldata$pair[which(alldata$language=="German")])
+for (i in (1:length(pair_vector))){ 
+current_pair <- pair_vector[i]
+group.data <- alldata[which(alldata$pair == current_pair),]
+number_of_targets_guessed_in_all_turns <- length(unique(group.data$target))
+print(number_of_targets_guessed_in_all_turns)#sanity check
+print(group.data$numberoftries) #sanity check
+pair_score <- number_of_targets_guessed_in_all_turns/sum(group.data$numberoftries, na.rm=TRUE)
+pair_score_vector_german_pair <- append(pair_score_vector_german_pair, pair_score)
+}
+names(pair_score_vector_german_pair) <- pair_vector
+pair_score_vector_german_pair
+
+
+# English
+pair_score_vector_english_pair <-c()
+pair_vector <- unique(alldata$pair[which(alldata$language=="English")])
+for (i in (1:length(pair_vector))){ 
+current_pair <- pair_vector[i]
+group.data <- alldata[which(alldata$pair == current_pair),]
+number_of_targets_guessed_in_all_turns <- length(unique(group.data$target))
+print(number_of_targets_guessed_in_all_turns)#sanity check
+print(group.data$numberoftries) #sanity check
+pair_score <- number_of_targets_guessed_in_all_turns/sum(group.data$numberoftries, na.rm=TRUE)
+pair_score_vector_english_pair <- append(pair_score_vector_english_pair, pair_score)
+}
+names(pair_score_vector_english_pair) <- pair_vector
+pair_score_vector_english_pair
+
+```
+
+
+
+#Preparation: to get BAS by item for the by-item BAS and by-item coordination success correlation
+*start with Engl*
+
+```{r}
+#alldata_F$bas_tcfirst<-as.numeric(alldata_F$bas_tcfirst)
+
+#delete whitespace
+#alldata$target<-gsub(" ", "", alldata$target, fixed = TRUE)
+
+alldata_F<-alldata %>% filter(condition=='face')
+
+
+#FACE
+#bulb 
+bulb1_face <- alldata_F[which(as.character(alldata_F$target) == "bulb"), c("bas_tcfirst")]
+alldata_F$successfulcues_BAS[which(as.character(alldata_F$target) == "bulb")] <- bulb1_face
+bulb1_face
+
+bulb2_face <- alldata_F[which(as.character(alldata_F$target) == "bulb"), c("bas_tcsecond")]
+alldata_F$successfulcues_BAS[which(as.character(alldata_F$target) == "bulb")] <- bulb2_face
+bulb2_face
+
+bulb3_face <- alldata_F[which(as.character(alldata_F$target) == "bulb"), c("bas_tcthird")]
+alldata_F$successfulcues_BAS[which(as.character(alldata_F$target) == "bulb")] <- bulb3_face
+bulb3_face
+
+bulb4_face <- alldata_F[which(as.character(alldata_F$target) == "bulb"), c("bas_tcfourth")]
+alldata_F$successfulcues_BAS[which(as.character(alldata_F$target) == "bulb")] <- bulb4_face
+bulb4_face
+
+bulb5_face <- alldata_F[which(as.character(alldata_F$target) == "bulb"), c("bas_tcfifth")]
+alldata_F$successfulcues_BAS[which(as.character(alldata_F$target) == "bulb")] <- bulb5_face
+bulb5_face
+
+
+#FACE
+#bank 
+bank1_face <- alldata_F[which(as.character(alldata_F$target) == "bank"), c("bas_tcfirst")]
+alldata_F$successfulcues_BAS[which(as.character(alldata_F$target) == "bank")] <- bank1_face
+bank1_face
+
+bank2_face <- alldata_F[which(as.character(alldata_F$target) == "bank"), c("bas_tcsecond")]
+alldata_F$successfulcues_BAS[which(as.character(alldata_F$target) == "bank")] <- bank2_face
+bank2_face
+
+bank3_face <- alldata_F[which(as.character(alldata_F$target) == "bank"), c("bas_tcthird")]
+alldata_F$successfulcues_BAS[which(as.character(alldata_F$target) == "bank")] <- bank3_face
+bank3_face
+
+bank4_face <- alldata_F[which(as.character(alldata_F$target) == "bank"), c("bas_tcfourth")]
+alldata_F$successfulcues_BAS[which(as.character(alldata_F$target) == "bank")] <- bank4_face
+bank4_face
+
+bank5_face <- alldata_F[which(as.character(alldata_F$target) == "bank"), c("bas_tcfifth")]
+alldata_F$successfulcues_BAS[which(as.character(alldata_F$target) == "bank")] <- bank5_face
+bank5_face
+
+#FACE
+#brewery 
+brewery1_face <- alldata_F[which(as.character(alldata_F$target) == "brewery"), c("bas_tcfirst")]
+alldata_F$successfulcues_BAS[which(as.character(alldata_F$target) == "brewery")] <- brewery1_face
+brewery1_face
+
+brewery2_face <- alldata_F[which(as.character(alldata_F$target) == "brewery"), c("bas_tcsecond")]
+alldata_F$successfulcues_BAS[which(as.character(alldata_F$target) == "brewery")] <- brewery2_face
+brewery2_face
+
+brewery3_face <- alldata_F[which(as.character(alldata_F$target) == "brewery"), c("bas_tcthird")]
+alldata_F$successfulcues_BAS[which(as.character(alldata_F$target) == "brewery")] <- brewery3_face
+brewery3_face
+
+brewery4_face <- alldata_F[which(as.character(alldata_F$target) == "brewery"), c("bas_tcfourth")]
+alldata_F$successfulcues_BAS[which(as.character(alldata_F$target) == "brewery")] <- brewery4_face
+brewery4_face
+
+brewery5_face <- alldata_F[which(as.character(alldata_F$target) == "brewery"), c("bas_tcfifth")]
+alldata_F$successfulcues_BAS[which(as.character(alldata_F$target) == "brewery")] <- brewery5_face
+brewery5_face
+
+
+
+#FACE
+#crescent 
+crescent1_face <- alldata_F[which(as.character(alldata_F$target) == "crescent"), c("bas_tcfirst")]
+alldata_F$successfulcues_BAS[which(as.character(alldata_F$target) == "crescent")] <- crescent1_face
+crescent1_face
+
+crescent2_face <- alldata_F[which(as.character(alldata_F$target) == "crescent"), c("bas_tcsecond")]
+alldata_F$successfulcues_BAS[which(as.character(alldata_F$target) == "crescent")] <- crescent2_face
+crescent2_face
+
+crescent3_face <- alldata_F[which(as.character(alldata_F$target) == "crescent"), c("bas_tcthird")]
+alldata_F$successfulcues_BAS[which(as.character(alldata_F$target) == "crescent")] <- crescent3_face
+crescent3_face
+
+crescent4_face <- alldata_F[which(as.character(alldata_F$target) == "crescent"), c("bas_tcfourth")]
+alldata_F$successfulcues_BAS[which(as.character(alldata_F$target) == "crescent")] <- crescent4_face
+crescent4_face
+
+crescent5_face <- alldata_F[which(as.character(alldata_F$target) == "crescent"), c("bas_tcfifth")]
+alldata_F$successfulcues_BAS[which(as.character(alldata_F$target) == "crescent")] <- crescent5_face
+crescent5_face
+
+
+#FACE
+#affection 
+affection1_face <- alldata_F[which(as.character(alldata_F$target) == "affection"), c("bas_tcfirst")]
+alldata_F$successfulcues_BAS[which(as.character(alldata_F$target) == "affection")] <- affection1_face
+affection1_face
+
+affection2_face <- alldata_F[which(as.character(alldata_F$target) == "affection"), c("bas_tcsecond")]
+alldata_F$successfulcues_BAS[which(as.character(alldata_F$target) == "affection")] <- affection2_face
+affection2_face
+
+affection3_face <- alldata_F[which(as.character(alldata_F$target) == "affection"), c("bas_tcthird")]
+alldata_F$successfulcues_BAS[which(as.character(alldata_F$target) == "affection")] <- affection3_face
+affection3_face
+
+affection4_face <- alldata_F[which(as.character(alldata_F$target) == "affection"), c("bas_tcfourth")]
+alldata_F$successfulcues_BAS[which(as.character(alldata_F$target) == "affection")] <- affection4_face
+affection4_face
+
+affection5_face <- alldata_F[which(as.character(alldata_F$target) == "affection"), c("bas_tcfifth")]
+alldata_F$successfulcues_BAS[which(as.character(alldata_F$target) == "affection")] <- affection5_face
+affection5_face
+
+#FACE
+#sill 
+sill1_face <- alldata_F[which(as.character(alldata_F$target) == "sill"), c("bas_tcfirst")]
+alldata_F$successfulcues_BAS[which(as.character(alldata_F$target) == "sill")] <- sill1_face
+sill1_face
+
+sill2_face <- alldata_F[which(as.character(alldata_F$target) == "sill"), c("bas_tcsecond")]
+alldata_F$successfulcues_BAS[which(as.character(alldata_F$target) == "sill")] <- sill2_face
+sill2_face
+
+sill3_face <- alldata_F[which(as.character(alldata_F$target) == "sill"), c("bas_tcthird")]
+alldata_F$successfulcues_BAS[which(as.character(alldata_F$target) == "sill")] <- sill3_face
+sill3_face
+
+sill4_face <- alldata_F[which(as.character(alldata_F$target) == "sill"), c("bas_tcfourth")]
+alldata_F$successfulcues_BAS[which(as.character(alldata_F$target) == "sill")] <- sill4_face
+sill4_face
+
+sill5_face <- alldata_F[which(as.character(alldata_F$target) == "sill"), c("bas_tcfifth")]
+alldata_F$successfulcues_BAS[which(as.character(alldata_F$target) == "sill")] <- sill5_face
+sill5_face
+
+
+
+#FACE
+#yolk 
+yolk1_face <- alldata_F[which(as.character(alldata_F$target) == "yolk"), c("bas_tcfirst")]
+alldata_F$successfulcues_BAS[which(as.character(alldata_F$target) == "yolk")] <- yolk1_face
+yolk1_face
+
+yolk2_face <- alldata_F[which(as.character(alldata_F$target) == "yolk"), c("bas_tcsecond")]
+alldata_F$successfulcues_BAS[which(as.character(alldata_F$target) == "yolk")] <- yolk2_face
+yolk2_face
+
+yolk3_face <- alldata_F[which(as.character(alldata_F$target) == "yolk"), c("bas_tcthird")]
+alldata_F$successfulcues_BAS[which(as.character(alldata_F$target) == "yolk")] <- yolk3_face
+yolk3_face
+
+yolk4_face <- alldata_F[which(as.character(alldata_F$target) == "yolk"), c("bas_tcfourth")]
+alldata_F$successfulcues_BAS[which(as.character(alldata_F$target) == "yolk")] <- yolk4_face
+yolk4_face
+
+yolk5_face <- alldata_F[which(as.character(alldata_F$target) == "yolk"), c("bas_tcfifth")]
+alldata_F$successfulcues_BAS[which(as.character(alldata_F$target) == "yolk")] <- yolk5_face
+yolk5_face
+
+
+#FACE
+#loaf 
+loaf1_face <- alldata_F[which(as.character(alldata_F$target) == "loaf"), c("bas_tcfirst")]
+alldata_F$successfulcues_BAS[which(as.character(alldata_F$target) == "loaf")] <- loaf1_face
+loaf1_face
+
+loaf2_face <- alldata_F[which(as.character(alldata_F$target) == "loaf"), c("bas_tcsecond")]
+alldata_F$successfulcues_BAS[which(as.character(alldata_F$target) == "loaf")] <- loaf2_face
+loaf2_face
+
+loaf3_face <- alldata_F[which(as.character(alldata_F$target) == "loaf"), c("bas_tcthird")]
+alldata_F$successfulcues_BAS[which(as.character(alldata_F$target) == "loaf")] <- loaf3_face
+loaf3_face
+
+loaf4_face <- alldata_F[which(as.character(alldata_F$target) == "loaf"), c("bas_tcfourth")]
+alldata_F$successfulcues_BAS[which(as.character(alldata_F$target) == "loaf")] <- loaf4_face
+loaf4_face
+
+loaf5_face <- alldata_F[which(as.character(alldata_F$target) == "loaf"), c("bas_tcfifth")]
+alldata_F$successfulcues_BAS[which(as.character(alldata_F$target) == "loaf")] <- loaf5_face
+loaf5_face
+
+
+#FACE
+#cob 
+cob1_face <- alldata_F[which(as.character(alldata_F$target) == "cob"), c("bas_tcfirst")]
+alldata_F$successfulcues_BAS[which(as.character(alldata_F$target) == "cob")] <- cob1_face
+cob1_face
+
+cob2_face <- alldata_F[which(as.character(alldata_F$target) == "cob"), c("bas_tcsecond")]
+alldata_F$successfulcues_BAS[which(as.character(alldata_F$target) == "cob")] <- cob2_face
+cob2_face
+
+cob3_face <- alldata_F[which(as.character(alldata_F$target) == "cob"), c("bas_tcthird")]
+alldata_F$successfulcues_BAS[which(as.character(alldata_F$target) == "cob")] <- cob3_face
+cob3_face
+
+cob4_face <- alldata_F[which(as.character(alldata_F$target) == "cob"), c("bas_tcfourth")]
+alldata_F$successfulcues_BAS[which(as.character(alldata_F$target) == "cob")] <- cob4_face
+cob4_face
+
+cob5_face <- alldata_F[which(as.character(alldata_F$target) == "cob"), c("bas_tcfifth")]
+alldata_F$successfulcues_BAS[which(as.character(alldata_F$target) == "cob")] <- cob5_face
+cob5_face
+
+
+#FACE
+#retina 
+retina1_face <- alldata_F[which(as.character(alldata_F$target) == "retina"), c("bas_tcfirst")]
+alldata_F$successfulcues_BAS[which(as.character(alldata_F$target) == "retina")] <- retina1_face
+retina1_face
+
+retina2_face <- alldata_F[which(as.character(alldata_F$target) == "retina"), c("bas_tcsecond")]
+alldata_F$successfulcues_BAS[which(as.character(alldata_F$target) == "retina")] <- retina2_face
+retina2_face
+
+retina3_face <- alldata_F[which(as.character(alldata_F$target) == "retina"), c("bas_tcthird")]
+alldata_F$successfulcues_BAS[which(as.character(alldata_F$target) == "retina")] <- retina3_face
+retina3_face
+
+retina4_face <- alldata_F[which(as.character(alldata_F$target) == "retina"), c("bas_tcfourth")]
+alldata_F$successfulcues_BAS[which(as.character(alldata_F$target) == "retina")] <- retina4_face
+retina4_face
+
+retina5_face <- alldata_F[which(as.character(alldata_F$target) == "retina"), c("bas_tcfifth")]
+alldata_F$successfulcues_BAS[which(as.character(alldata_F$target) == "retina")] <- retina5_face
+retina5_face
+
+
+#FACE
+#grater 
+grater1_face <- alldata_F[which(as.character(alldata_F$target) == "grater"), c("bas_tcfirst")]
+alldata_F$successfulcues_BAS[which(as.character(alldata_F$target) == "grater")] <- grater1_face
+grater1_face
+
+grater2_face <- alldata_F[which(as.character(alldata_F$target) == "grater"), c("bas_tcsecond")]
+alldata_F$successfulcues_BAS[which(as.character(alldata_F$target) == "grater")] <- grater2_face
+grater2_face
+
+grater3_face <- alldata_F[which(as.character(alldata_F$target) == "grater"), c("bas_tcthird")]
+alldata_F$successfulcues_BAS[which(as.character(alldata_F$target) == "grater")] <- grater3_face
+grater3_face
+
+grater4_face <- alldata_F[which(as.character(alldata_F$target) == "grater"), c("bas_tcfourth")]
+alldata_F$successfulcues_BAS[which(as.character(alldata_F$target) == "grater")] <- grater4_face
+grater4_face
+
+grater5_face <- alldata_F[which(as.character(alldata_F$target) == "grater"), c("bas_tcfifth")]
+alldata_F$successfulcues_BAS[which(as.character(alldata_F$target) == "grater")] <- grater5_face
+grater5_face
+
+
+#FACE
+#steed 
+steed1_face <- alldata_F[which(as.character(alldata_F$target) == "steed"), c("bas_tcfirst")]
+alldata_F$successfulcues_BAS[which(as.character(alldata_F$target) == "steed")] <- steed1_face
+steed1_face
+
+steed2_face <- alldata_F[which(as.character(alldata_F$target) == "steed"), c("bas_tcsecond")]
+alldata_F$successfulcues_BAS[which(as.character(alldata_F$target) == "steed")] <- steed2_face
+steed2_face
+
+steed3_face <- alldata_F[which(as.character(alldata_F$target) == "steed"), c("bas_tcthird")]
+alldata_F$successfulcues_BAS[which(as.character(alldata_F$target) == "steed")] <- steed3_face
+steed3_face
+
+steed4_face <- alldata_F[which(as.character(alldata_F$target) == "steed"), c("bas_tcfourth")]
+alldata_F$successfulcues_BAS[which(as.character(alldata_F$target) == "steed")] <- steed4_face
+steed4_face
+
+steed5_face <- alldata_F[which(as.character(alldata_F$target) == "steed"), c("bas_tcfifth")]
+alldata_F$successfulcues_BAS[which(as.character(alldata_F$target) == "steed")] <- steed5_face
+steed5_face
+
+#FACE
+#pepperoni 
+pepperoni1_face <- alldata_F[which(as.character(alldata_F$target) == "pepperoni"), c("bas_tcfirst")]
+alldata_F$successfulcues_BAS[which(as.character(alldata_F$target) == "pepperoni")] <- pepperoni1_face
+pepperoni1_face
+
+pepperoni2_face <- alldata_F[which(as.character(alldata_F$target) == "pepperoni"), c("bas_tcsecond")]
+alldata_F$successfulcues_BAS[which(as.character(alldata_F$target) == "pepperoni")] <- pepperoni2_face
+pepperoni2_face
+
+pepperoni3_face <- alldata_F[which(as.character(alldata_F$target) == "pepperoni"), c("bas_tcthird")]
+alldata_F$successfulcues_BAS[which(as.character(alldata_F$target) == "pepperoni")] <- pepperoni3_face
+pepperoni3_face
+
+pepperoni4_face <- alldata_F[which(as.character(alldata_F$target) == "pepperoni"), c("bas_tcfourth")]
+alldata_F$successfulcues_BAS[which(as.character(alldata_F$target) == "pepperoni")] <- pepperoni4_face
+pepperoni4_face
+
+pepperoni5_face <- alldata_F[which(as.character(alldata_F$target) == "pepperoni"), c("bas_tcfifth")]
+alldata_F$successfulcues_BAS[which(as.character(alldata_F$target) == "pepperoni")] <- pepperoni5_face
+pepperoni5_face
+
+
+#FACE
+#cod 
+cod1_face <- alldata_F[which(as.character(alldata_F$target) == "cod"), c("bas_tcfirst")]
+alldata_F$successfulcues_BAS[which(as.character(alldata_F$target) == "cod")] <- cod1_face
+cod1_face
+
+cod2_face <- alldata_F[which(as.character(alldata_F$target) == "cod"), c("bas_tcsecond")]
+alldata_F$successfulcues_BAS[which(as.character(alldata_F$target) == "cod")] <- cod2_face
+cod2_face
+
+cod3_face <- alldata_F[which(as.character(alldata_F$target) == "cod"), c("bas_tcthird")]
+alldata_F$successfulcues_BAS[which(as.character(alldata_F$target) == "cod")] <- cod3_face
+cod3_face
+
+cod4_face <- alldata_F[which(as.character(alldata_F$target) == "cod"), c("bas_tcfourth")]
+alldata_F$successfulcues_BAS[which(as.character(alldata_F$target) == "cod")] <- cod4_face
+cod4_face
+
+cod5_face <- alldata_F[which(as.character(alldata_F$target) == "cod"), c("bas_tcfifth")]
+alldata_F$successfulcues_BAS[which(as.character(alldata_F$target) == "cod")] <- cod5_face
+cod5_face
+
+
+
+#FACE
+#crossword 
+crossword1_face <- alldata_F[which(as.character(alldata_F$target) == "crossword"), c("bas_tcfirst")]
+alldata_F$successfulcues_BAS[which(as.character(alldata_F$target) == "crossword")] <- crossword1_face
+crossword1_face
+
+crossword2_face <- alldata_F[which(as.character(alldata_F$target) == "crossword"), c("bas_tcsecond")]
+alldata_F$successfulcues_BAS[which(as.character(alldata_F$target) == "crossword")] <- crossword2_face
+crossword2_face
+
+crossword3_face <- alldata_F[which(as.character(alldata_F$target) == "crossword"), c("bas_tcthird")]
+alldata_F$successfulcues_BAS[which(as.character(alldata_F$target) == "crossword")] <- crossword3_face
+crossword3_face
+
+crossword4_face <- alldata_F[which(as.character(alldata_F$target) == "crossword"), c("bas_tcfourth")]
+alldata_F$successfulcues_BAS[which(as.character(alldata_F$target) == "crossword")] <- crossword4_face
+crossword4_face
+
+crossword5_face <- alldata_F[which(as.character(alldata_F$target) == "crossword"), c("bas_tcfifth")]
+alldata_F$successfulcues_BAS[which(as.character(alldata_F$target) == "crossword")] <- crossword5_face
+crossword5_face
+
+
+#FACE
+#blaze 
+blaze1_face <- alldata_F[which(as.character(alldata_F$target) == "blaze"), c("bas_tcfirst")]
+alldata_F$successfulcues_BAS[which(as.character(alldata_F$target) == "blaze")] <- blaze1_face
+blaze1_face
+
+blaze2_face <- alldata_F[which(as.character(alldata_F$target) == "blaze"), c("bas_tcsecond")]
+alldata_F$successfulcues_BAS[which(as.character(alldata_F$target) == "blaze")] <- blaze2_face
+blaze2_face
+
+blaze3_face <- alldata_F[which(as.character(alldata_F$target) == "blaze"), c("bas_tcthird")]
+alldata_F$successfulcues_BAS[which(as.character(alldata_F$target) == "blaze")] <- blaze3_face
+blaze3_face
+
+blaze4_face <- alldata_F[which(as.character(alldata_F$target) == "blaze"), c("bas_tcfourth")]
+alldata_F$successfulcues_BAS[which(as.character(alldata_F$target) == "blaze")] <- blaze4_face
+blaze4_face
+
+blaze5_face <- alldata_F[which(as.character(alldata_F$target) == "blaze"), c("bas_tcfifth")]
+alldata_F$successfulcues_BAS[which(as.character(alldata_F$target) == "blaze")] <- blaze5_face
+blaze5_face
+
+#FACE
+#occupation
+
+occupation1_face <- alldata_F[which(as.character(alldata_F$target) == "occupation"), c("bas_tcfirst")]
+alldata_F$successfulcues_BAS[which(as.character(alldata_F$target) == "occupation")] <- occupation1_face
+occupation1_face
+
+occupation2_face <- alldata_F[which(as.character(alldata_F$target) == "occupation"), c("bas_tcsecond")]
+alldata_F$successfulcues_BAS[which(as.character(alldata_F$target) == "occupation")] <- occupation2_face
+occupation2_face
+
+occupation3_face <- alldata_F[which(as.character(alldata_F$target) == "occupation"), c("bas_tcthird")]
+alldata_F$successfulcues_BAS[which(as.character(alldata_F$target) == "occupation")] <- occupation3_face
+occupation3_face
+
+occupation4_face <- alldata_F[which(as.character(alldata_F$target) == "occupation"), c("bas_tcfourth")]
+alldata_F$successfulcues_BAS[which(as.character(alldata_F$target) == "occupation")] <- occupation4_face
+occupation4_face
+
+occupation5_face <- alldata_F[which(as.character(alldata_F$target) == "occupation"), c("bas_tcfifth")]
+alldata_F$successfulcues_BAS[which(as.character(alldata_F$target) == "occupation")] <- occupation5_face
+occupation5_face
+
+#FACE
+#butcher 
+butcher1_face <- alldata_F[which(as.character(alldata_F$target) == "butcher"), c("bas_tcfirst")]
+alldata_F$successfulcues_BAS[which(as.character(alldata_F$target) == "butcher")] <- butcher1_face
+butcher1_face
+
+butcher2_face <- alldata_F[which(as.character(alldata_F$target) == "butcher"), c("bas_tcsecond")]
+alldata_F$successfulcues_BAS[which(as.character(alldata_F$target) == "butcher")] <- butcher2_face
+butcher2_face
+
+butcher3_face <- alldata_F[which(as.character(alldata_F$target) == "butcher"), c("bas_tcthird")]
+alldata_F$successfulcues_BAS[which(as.character(alldata_F$target) == "butcher")] <- butcher3_face
+butcher3_face
+
+butcher4_face <- alldata_F[which(as.character(alldata_F$target) == "butcher"), c("bas_tcfourth")]
+alldata_F$successfulcues_BAS[which(as.character(alldata_F$target) == "butcher")] <- butcher4_face
+butcher4_face
+
+butcher5_face <- alldata_F[which(as.character(alldata_F$target) == "butcher"), c("bas_tcfifth")]
+alldata_F$successfulcues_BAS[which(as.character(alldata_F$target) == "butcher")] <- butcher5_face
+butcher5_face
+
+
+#FACE
+#bouquet 
+bouquet1_face <- alldata_F[which(as.character(alldata_F$target) == "bouquet"), c("bas_tcfirst")]
+alldata_F$successfulcues_BAS[which(as.character(alldata_F$target) == "bouquet")] <- bouquet1_face
+bouquet1_face
+
+bouquet2_face <- alldata_F[which(as.character(alldata_F$target) == "bouquet"), c("bas_tcsecond")]
+alldata_F$successfulcues_BAS[which(as.character(alldata_F$target) == "bouquet")] <- bouquet2_face
+bouquet2_face
+
+bouquet3_face <- alldata_F[which(as.character(alldata_F$target) == "bouquet"), c("bas_tcthird")]
+alldata_F$successfulcues_BAS[which(as.character(alldata_F$target) == "bouquet")] <- bouquet3_face
+bouquet3_face
+
+bouquet4_face <- alldata_F[which(as.character(alldata_F$target) == "bouquet"), c("bas_tcfourth")]
+alldata_F$successfulcues_BAS[which(as.character(alldata_F$target) == "bouquet")] <- bouquet4_face
+bouquet4_face
+
+bouquet5_face <- alldata_F[which(as.character(alldata_F$target) == "bouquet"), c("bas_tcfifth")]
+alldata_F$successfulcues_BAS[which(as.character(alldata_F$target) == "bouquet")] <- bouquet5_face
+bouquet5_face
+
+#FACE
+#acquaintance 
+acquaintance1_face <- alldata_F[which(as.character(alldata_F$target) == "acquaintance"), c("bas_tcfirst")]
+alldata_F$successfulcues_BAS[which(as.character(alldata_F$target) == "acquaintance")] <- acquaintance1_face
+acquaintance1_face
+
+acquaintance2_face <- alldata_F[which(as.character(alldata_F$target) == "acquaintance"), c("bas_tcsecond")]
+alldata_F$successfulcues_BAS[which(as.character(alldata_F$target) == "acquaintance")] <- acquaintance2_face
+acquaintance2_face
+
+acquaintance3_face <- alldata_F[which(as.character(alldata_F$target) == "acquaintance"), c("bas_tcthird")]
+alldata_F$successfulcues_BAS[which(as.character(alldata_F$target) == "acquaintance")] <- acquaintance3_face
+acquaintance3_face
+
+acquaintance4_face <- alldata_F[which(as.character(alldata_F$target) == "acquaintance"), c("bas_tcfourth")]
+alldata_F$successfulcues_BAS[which(as.character(alldata_F$target) == "acquaintance")] <- acquaintance4_face
+acquaintance4_face
+
+acquaintance5_face <- alldata_F[which(as.character(alldata_F$target) == "acquaintance"), c("bas_tcfifth")]
+alldata_F$successfulcues_BAS[which(as.character(alldata_F$target) == "acquaintance")] <- acquaintance5_face
+acquaintance5_face
+
+
+
+#German FACE
+
+alldata_F<-alldata_F %>% filter(condition=='face')
+alldata_F
+
+#FACE
+#Krone 
+Krone1_face <- alldata_F[which(as.character(alldata_F$target) == "Krone"), c("bas_tcfirst")]
+alldata_F$successfulcues_BAS[which(as.character(alldata_F$target) == "Krone")] <- Krone1_face
+Krone1_face
+
+Krone2_face <- alldata_F[which(as.character(alldata_F$target) == "Krone"), c("bas_tcsecond")]
+alldata_F$successfulcues_BAS[which(as.character(alldata_F$target) == "Krone")] <- Krone2_face
+Krone2_face
+
+Krone3_face <- alldata_F[which(as.character(alldata_F$target) == "Krone"), c("bas_tcthird")]
+alldata_F$successfulcues_BAS[which(as.character(alldata_F$target) == "Krone")] <- Krone3_face
+Krone3_face
+
+Krone4_face <- alldata_F[which(as.character(alldata_F$target) == "Krone"), c("bas_tcfourth")]
+alldata_F$successfulcues_BAS[which(as.character(alldata_F$target) == "Krone")] <- Krone4_face
+Krone4_face
+
+Krone5_face <- alldata_F[which(as.character(alldata_F$target) == "Krone"), c("bas_tcfifth")]
+alldata_F$successfulcues_BAS[which(as.character(alldata_F$target) == "Krone")] <- Krone5_face
+Krone5_face
+
+
+#FACE
+#Hafen 
+Hafen1_face <- alldata_F[which(as.character(alldata_F$target) == "Hafen"), c("bas_tcfirst")]
+alldata_F$successfulcues_BAS[which(as.character(alldata_F$target) == "Hafen")] <- Hafen1_face
+Hafen1_face
+
+Hafen2_face <- alldata_F[which(as.character(alldata_F$target) == "Hafen"), c("bas_tcsecond")]
+alldata_F$successfulcues_BAS[which(as.character(alldata_F$target) == "Hafen")] <- Hafen2_face
+Hafen2_face
+
+Hafen3_face <- alldata_F[which(as.character(alldata_F$target) == "Hafen"), c("bas_tcthird")]
+alldata_F$successfulcues_BAS[which(as.character(alldata_F$target) == "Hafen")] <- Hafen3_face
+Hafen3_face
+
+Hafen4_face <- alldata_F[which(as.character(alldata_F$target) == "Hafen"), c("bas_tcfourth")]
+alldata_F$successfulcues_BAS[which(as.character(alldata_F$target) == "Hafen")] <- Hafen4_face
+Hafen4_face
+
+Hafen5_face <- alldata_F[which(as.character(alldata_F$target) == "Hafen"), c("bas_tcfifth")]
+alldata_F$successfulcues_BAS[which(as.character(alldata_F$target) == "Hafen")] <- Hafen5_face
+Hafen5_face
+
+#FACE
+#Brunnen 
+Brunnen1_face <- alldata_F[which(as.character(alldata_F$target) == "Brunnen"), c("bas_tcfirst")]
+alldata_F$successfulcues_BAS[which(as.character(alldata_F$target) == "Brunnen")] <- Brunnen1_face
+Brunnen1_face
+
+Brunnen2_face <- alldata_F[which(as.character(alldata_F$target) == "Brunnen"), c("bas_tcsecond")]
+alldata_F$successfulcues_BAS[which(as.character(alldata_F$target) == "Brunnen")] <- Brunnen2_face
+Brunnen2_face
+
+Brunnen3_face <- alldata_F[which(as.character(alldata_F$target) == "Brunnen"), c("bas_tcthird")]
+alldata_F$successfulcues_BAS[which(as.character(alldata_F$target) == "Brunnen")] <- Brunnen3_face
+Brunnen3_face
+
+Brunnen4_face <- alldata_F[which(as.character(alldata_F$target) == "Brunnen"), c("bas_tcfourth")]
+alldata_F$successfulcues_BAS[which(as.character(alldata_F$target) == "Brunnen")] <- Brunnen4_face
+Brunnen4_face
+
+Brunnen5_face <- alldata_F[which(as.character(alldata_F$target) == "Brunnen"), c("bas_tcfifth")]
+alldata_F$successfulcues_BAS[which(as.character(alldata_F$target) == "Brunnen")] <- Brunnen5_face
+Brunnen5_face
+
+
+
+#FACE
+#Kamm 
+Kamm1_face <- alldata_F[which(as.character(alldata_F$target) == "Kamm"), c("bas_tcfirst")]
+alldata_F$successfulcues_BAS[which(as.character(alldata_F$target) == "Kamm")] <- Kamm1_face
+Kamm1_face
+
+Kamm2_face <- alldata_F[which(as.character(alldata_F$target) == "Kamm"), c("bas_tcsecond")]
+alldata_F$successfulcues_BAS[which(as.character(alldata_F$target) == "Kamm")] <- Kamm2_face
+Kamm2_face
+
+Kamm3_face <- alldata_F[which(as.character(alldata_F$target) == "Kamm"), c("bas_tcthird")]
+alldata_F$successfulcues_BAS[which(as.character(alldata_F$target) == "Kamm")] <- Kamm3_face
+Kamm3_face
+
+Kamm4_face <- alldata_F[which(as.character(alldata_F$target) == "Kamm"), c("bas_tcfourth")]
+alldata_F$successfulcues_BAS[which(as.character(alldata_F$target) == "Kamm")] <- Kamm4_face
+Kamm4_face
+
+Kamm5_face <- alldata_F[which(as.character(alldata_F$target) == "Kamm"), c("bas_tcfifth")]
+alldata_F$successfulcues_BAS[which(as.character(alldata_F$target) == "Kamm")] <- Kamm5_face
+Kamm5_face
+
+
+#FACE
+#Dach 
+Dach1_face <- alldata_F[which(as.character(alldata_F$target) == "Dach"), c("bas_tcfirst")]
+alldata_F$successfulcues_BAS[which(as.character(alldata_F$target) == "Dach")] <- Dach1_face
+Dach1_face
+
+Dach2_face <- alldata_F[which(as.character(alldata_F$target) == "Dach"), c("bas_tcsecond")]
+alldata_F$successfulcues_BAS[which(as.character(alldata_F$target) == "Dach")] <- Dach2_face
+Dach2_face
+
+Dach3_face <- alldata_F[which(as.character(alldata_F$target) == "Dach"), c("bas_tcthird")]
+alldata_F$successfulcues_BAS[which(as.character(alldata_F$target) == "Dach")] <- Dach3_face
+Dach3_face
+
+Dach4_face <- alldata_F[which(as.character(alldata_F$target) == "Dach"), c("bas_tcfourth")]
+alldata_F$successfulcues_BAS[which(as.character(alldata_F$target) == "Dach")] <- Dach4_face
+Dach4_face
+
+Dach5_face <- alldata_F[which(as.character(alldata_F$target) == "Dach"), c("bas_tcfifth")]
+alldata_F$successfulcues_BAS[which(as.character(alldata_F$target) == "Dach")] <- Dach5_face
+Dach5_face
+
+#FACE
+#Lilie 
+Lilie1_face <- alldata_F[which(as.character(alldata_F$target) == "Lilie"), c("bas_tcfirst")]
+alldata_F$successfulcues_BAS[which(as.character(alldata_F$target) == "Lilie")] <- Lilie1_face
+Lilie1_face
+
+Lilie2_face <- alldata_F[which(as.character(alldata_F$target) == "Lilie"), c("bas_tcsecond")]
+alldata_F$successfulcues_BAS[which(as.character(alldata_F$target) == "Lilie")] <- Lilie2_face
+Lilie2_face
+
+Lilie3_face <- alldata_F[which(as.character(alldata_F$target) == "Lilie"), c("bas_tcthird")]
+alldata_F$successfulcues_BAS[which(as.character(alldata_F$target) == "Lilie")] <- Lilie3_face
+Lilie3_face
+
+Lilie4_face <- alldata_F[which(as.character(alldata_F$target) == "Lilie"), c("bas_tcfourth")]
+alldata_F$successfulcues_BAS[which(as.character(alldata_F$target) == "Lilie")] <- Lilie4_face
+Lilie4_face
+
+Lilie5_face <- alldata_F[which(as.character(alldata_F$target) == "Lilie"), c("bas_tcfifth")]
+alldata_F$successfulcues_BAS[which(as.character(alldata_F$target) == "Lilie")] <- Lilie5_face
+Lilie5_face
+
+
+
+#FACE
+#Paddel 
+Paddel1_face <- alldata_F[which(as.character(alldata_F$target) == "Paddel"), c("bas_tcfirst")]
+alldata_F$successfulcues_BAS[which(as.character(alldata_F$target) == "Paddel")] <- Paddel1_face
+Paddel1_face
+
+Paddel2_face <- alldata_F[which(as.character(alldata_F$target) == "Paddel"), c("bas_tcsecond")]
+alldata_F$successfulcues_BAS[which(as.character(alldata_F$target) == "Paddel")] <- Paddel2_face
+Paddel2_face
+
+Paddel3_face <- alldata_F[which(as.character(alldata_F$target) == "Paddel"), c("bas_tcthird")]
+alldata_F$successfulcues_BAS[which(as.character(alldata_F$target) == "Paddel")] <- Paddel3_face
+Paddel3_face
+
+Paddel4_face <- alldata_F[which(as.character(alldata_F$target) == "Paddel"), c("bas_tcfourth")]
+alldata_F$successfulcues_BAS[which(as.character(alldata_F$target) == "Paddel")] <- Paddel4_face
+Paddel4_face
+
+Paddel5_face <- alldata_F[which(as.character(alldata_F$target) == "Paddel"), c("bas_tcfifth")]
+alldata_F$successfulcues_BAS[which(as.character(alldata_F$target) == "Paddel")] <- Paddel5_face
+Paddel5_face
+
+
+#FACE
+#Gebiss 
+Gebiss1_face <- alldata_F[which(as.character(alldata_F$target) == "Gebiss"), c("bas_tcfirst")]
+alldata_F$successfulcues_BAS[which(as.character(alldata_F$target) == "Gebiss")] <- Gebiss1_face
+Gebiss1_face
+
+Gebiss2_face <- alldata_F[which(as.character(alldata_F$target) == "Gebiss"), c("bas_tcsecond")]
+alldata_F$successfulcues_BAS[which(as.character(alldata_F$target) == "Gebiss")] <- Gebiss2_face
+Gebiss2_face
+
+Gebiss3_face <- alldata_F[which(as.character(alldata_F$target) == "Gebiss"), c("bas_tcthird")]
+alldata_F$successfulcues_BAS[which(as.character(alldata_F$target) == "Gebiss")] <- Gebiss3_face
+Gebiss3_face
+
+Gebiss4_face <- alldata_F[which(as.character(alldata_F$target) == "Gebiss"), c("bas_tcfourth")]
+alldata_F$successfulcues_BAS[which(as.character(alldata_F$target) == "Gebiss")] <- Gebiss4_face
+Gebiss4_face
+
+Gebiss5_face <- alldata_F[which(as.character(alldata_F$target) == "Gebiss"), c("bas_tcfifth")]
+alldata_F$successfulcues_BAS[which(as.character(alldata_F$target) == "Gebiss")] <- Gebiss5_face
+Gebiss5_face
+
+
+#FACE
+#Feder 
+Feder1_face <- alldata_F[which(as.character(alldata_F$target) == "Feder"), c("bas_tcfirst")]
+alldata_F$successfulcues_BAS[which(as.character(alldata_F$target) == "Feder")] <- Feder1_face
+Feder1_face
+
+Feder2_face <- alldata_F[which(as.character(alldata_F$target) == "Feder"), c("bas_tcsecond")]
+alldata_F$successfulcues_BAS[which(as.character(alldata_F$target) == "Feder")] <- Feder2_face
+Feder2_face
+
+Feder3_face <- alldata_F[which(as.character(alldata_F$target) == "Feder"), c("bas_tcthird")]
+alldata_F$successfulcues_BAS[which(as.character(alldata_F$target) == "Feder")] <- Feder3_face
+Feder3_face
+
+Feder4_face <- alldata_F[which(as.character(alldata_F$target) == "Feder"), c("bas_tcfourth")]
+alldata_F$successfulcues_BAS[which(as.character(alldata_F$target) == "Feder")] <- Feder4_face
+Feder4_face
+
+Feder5_face <- alldata_F[which(as.character(alldata_F$target) == "Feder"), c("bas_tcfifth")]
+alldata_F$successfulcues_BAS[which(as.character(alldata_F$target) == "Feder")] <- Feder5_face
+Feder5_face
+
+
+#FACE
+#Schirm 
+Schirm1_face <- alldata_F[which(as.character(alldata_F$target) == "Schirm"), c("bas_tcfirst")]
+alldata_F$successfulcues_BAS[which(as.character(alldata_F$target) == "Schirm")] <- Schirm1_face
+Schirm1_face
+
+Schirm2_face <- alldata_F[which(as.character(alldata_F$target) == "Schirm"), c("bas_tcsecond")]
+alldata_F$successfulcues_BAS[which(as.character(alldata_F$target) == "Schirm")] <- Schirm2_face
+Schirm2_face
+
+Schirm3_face <- alldata_F[which(as.character(alldata_F$target) == "Schirm"), c("bas_tcthird")]
+alldata_F$successfulcues_BAS[which(as.character(alldata_F$target) == "Schirm")] <- Schirm3_face
+Schirm3_face
+
+Schirm4_face <- alldata_F[which(as.character(alldata_F$target) == "Schirm"), c("bas_tcfourth")]
+alldata_F$successfulcues_BAS[which(as.character(alldata_F$target) == "Schirm")] <- Schirm4_face
+Schirm4_face
+
+Schirm5_face <- alldata_F[which(as.character(alldata_F$target) == "Schirm"), c("bas_tcfifth")]
+alldata_F$successfulcues_BAS[which(as.character(alldata_F$target) == "Schirm")] <- Schirm5_face
+Schirm5_face
+
+
+#FACE
+#Radio 
+Radio1_face <- alldata_F[which(as.character(alldata_F$target) == "Radio"), c("bas_tcfirst")]
+alldata_F$successfulcues_BAS[which(as.character(alldata_F$target) == "Radio")] <- Radio1_face
+Radio1_face
+
+Radio2_face <- alldata_F[which(as.character(alldata_F$target) == "Radio"), c("bas_tcsecond")]
+alldata_F$successfulcues_BAS[which(as.character(alldata_F$target) == "Radio")] <- Radio2_face
+Radio2_face
+
+Radio3_face <- alldata_F[which(as.character(alldata_F$target) == "Radio"), c("bas_tcthird")]
+alldata_F$successfulcues_BAS[which(as.character(alldata_F$target) == "Radio")] <- Radio3_face
+Radio3_face
+
+Radio4_face <- alldata_F[which(as.character(alldata_F$target) == "Radio"), c("bas_tcfourth")]
+alldata_F$successfulcues_BAS[which(as.character(alldata_F$target) == "Radio")] <- Radio4_face
+Radio4_face
+
+Radio5_face <- alldata_F[which(as.character(alldata_F$target) == "Radio"), c("bas_tcfifth")]
+alldata_F$successfulcues_BAS[which(as.character(alldata_F$target) == "Radio")] <- Radio5_face
+Radio5_face
+
+
+#FACE
+#Axt 
+Axt1_face <- alldata_F[which(as.character(alldata_F$target) == "Axt"), c("bas_tcfirst")]
+alldata_F$successfulcues_BAS[which(as.character(alldata_F$target) == "Axt")] <- Axt1_face
+Axt1_face
+
+Axt2_face <- alldata_F[which(as.character(alldata_F$target) == "Axt"), c("bas_tcsecond")]
+alldata_F$successfulcues_BAS[which(as.character(alldata_F$target) == "Axt")] <- Axt2_face
+Axt2_face
+
+Axt3_face <- alldata_F[which(as.character(alldata_F$target) == "Axt"), c("bas_tcthird")]
+alldata_F$successfulcues_BAS[which(as.character(alldata_F$target) == "Axt")] <- Axt3_face
+Axt3_face
+
+Axt4_face <- alldata_F[which(as.character(alldata_F$target) == "Axt"), c("bas_tcfourth")]
+alldata_F$successfulcues_BAS[which(as.character(alldata_F$target) == "Axt")] <- Axt4_face
+Axt4_face
+
+Axt5_face <- alldata_F[which(as.character(alldata_F$target) == "Axt"), c("bas_tcfifth")]
+alldata_F$successfulcues_BAS[which(as.character(alldata_F$target) == "Axt")] <- Axt5_face
+Axt5_face
+
+#FACE
+#Butter 
+Butter1_face <- alldata_F[which(as.character(alldata_F$target) == "Butter"), c("bas_tcfirst")]
+alldata_F$successfulcues_BAS[which(as.character(alldata_F$target) == "Butter")] <- Butter1_face
+Butter1_face
+
+Butter2_face <- alldata_F[which(as.character(alldata_F$target) == "Butter"), c("bas_tcsecond")]
+alldata_F$successfulcues_BAS[which(as.character(alldata_F$target) == "Butter")] <- Butter2_face
+Butter2_face
+
+Butter3_face <- alldata_F[which(as.character(alldata_F$target) == "Butter"), c("bas_tcthird")]
+alldata_F$successfulcues_BAS[which(as.character(alldata_F$target) == "Butter")] <- Butter3_face
+Butter3_face
+
+Butter4_face <- alldata_F[which(as.character(alldata_F$target) == "Butter"), c("bas_tcfourth")]
+alldata_F$successfulcues_BAS[which(as.character(alldata_F$target) == "Butter")] <- Butter4_face
+Butter4_face
+
+Butter5_face <- alldata_F[which(as.character(alldata_F$target) == "Butter"), c("bas_tcfifth")]
+alldata_F$successfulcues_BAS[which(as.character(alldata_F$target) == "Butter")] <- Butter5_face
+Butter5_face
+
+
+#FACE
+#Rüstung 
+Rüstung1_face <- alldata_F[which(as.character(alldata_F$target) == "Rüstung"), c("bas_tcfirst")]
+alldata_F$successfulcues_BAS[which(as.character(alldata_F$target) == "Rüstung")] <- Rüstung1_face
+Rüstung1_face
+
+Rüstung2_face <- alldata_F[which(as.character(alldata_F$target) == "Rüstung"), c("bas_tcsecond")]
+alldata_F$successfulcues_BAS[which(as.character(alldata_F$target) == "Rüstung")] <- Rüstung2_face
+Rüstung2_face
+
+Rüstung3_face <- alldata_F[which(as.character(alldata_F$target) == "Rüstung"), c("bas_tcthird")]
+alldata_F$successfulcues_BAS[which(as.character(alldata_F$target) == "Rüstung")] <- Rüstung3_face
+Rüstung3_face
+
+Rüstung4_face <- alldata_F[which(as.character(alldata_F$target) == "Rüstung"), c("bas_tcfourth")]
+alldata_F$successfulcues_BAS[which(as.character(alldata_F$target) == "Rüstung")] <- Rüstung4_face
+Rüstung4_face
+
+Rüstung5_face <- alldata_F[which(as.character(alldata_F$target) == "Rüstung"), c("bas_tcfifth")]
+alldata_F$successfulcues_BAS[which(as.character(alldata_F$target) == "Rüstung")] <- Rüstung5_face
+Rüstung5_face
+
+
+
+#FACE
+#Hammer 
+Hammer1_face <- alldata_F[which(as.character(alldata_F$target) == "Hammer"), c("bas_tcfirst")]
+alldata_F$successfulcues_BAS[which(as.character(alldata_F$target) == "Hammer")] <- Hammer1_face
+Hammer1_face
+
+Hammer2_face <- alldata_F[which(as.character(alldata_F$target) == "Hammer"), c("bas_tcsecond")]
+alldata_F$successfulcues_BAS[which(as.character(alldata_F$target) == "Hammer")] <- Hammer2_face
+Hammer2_face
+
+Hammer3_face <- alldata_F[which(as.character(alldata_F$target) == "Hammer"), c("bas_tcthird")]
+alldata_F$successfulcues_BAS[which(as.character(alldata_F$target) == "Hammer")] <- Hammer3_face
+Hammer3_face
+
+Hammer4_face <- alldata_F[which(as.character(alldata_F$target) == "Hammer"), c("bas_tcfourth")]
+alldata_F$successfulcues_BAS[which(as.character(alldata_F$target) == "Hammer")] <- Hammer4_face
+Hammer4_face
+
+Hammer5_face <- alldata_F[which(as.character(alldata_F$target) == "Hammer"), c("bas_tcfifth")]
+alldata_F$successfulcues_BAS[which(as.character(alldata_F$target) == "Hammer")] <- Hammer5_face
+Hammer5_face
+
+
+#FACE
+#Lehrerin 
+Lehrerin1_face <- alldata_F[which(as.character(alldata_F$target) == "Lehrerin"), c("bas_tcfirst")]
+alldata_F$successfulcues_BAS[which(as.character(alldata_F$target) == "Lehrerin")] <- Lehrerin1_face
+Lehrerin1_face
+
+Lehrerin2_face <- alldata_F[which(as.character(alldata_F$target) == "Lehrerin"), c("bas_tcsecond")]
+alldata_F$successfulcues_BAS[which(as.character(alldata_F$target) == "Lehrerin")] <- Lehrerin2_face
+Lehrerin2_face
+
+Lehrerin3_face <- alldata_F[which(as.character(alldata_F$target) == "Lehrerin"), c("bas_tcthird")]
+alldata_F$successfulcues_BAS[which(as.character(alldata_F$target) == "Lehrerin")] <- Lehrerin3_face
+Lehrerin3_face
+
+Lehrerin4_face <- alldata_F[which(as.character(alldata_F$target) == "Lehrerin"), c("bas_tcfourth")]
+alldata_F$successfulcues_BAS[which(as.character(alldata_F$target) == "Lehrerin")] <- Lehrerin4_face
+Lehrerin4_face
+
+Lehrerin5_face <- alldata_F[which(as.character(alldata_F$target) == "Lehrerin"), c("bas_tcfifth")]
+alldata_F$successfulcues_BAS[which(as.character(alldata_F$target) == "Lehrerin")] <- Lehrerin5_face
+Lehrerin5_face
+
+#FACE
+#Mauer
+
+Mauer1_face <- alldata_F[which(as.character(alldata_F$target) == "Mauer"), c("bas_tcfirst")]
+alldata_F$successfulcues_BAS[which(as.character(alldata_F$target) == "Mauer")] <- Mauer1_face
+Mauer1_face
+
+Mauer2_face <- alldata_F[which(as.character(alldata_F$target) == "Mauer"), c("bas_tcsecond")]
+alldata_F$successfulcues_BAS[which(as.character(alldata_F$target) == "Mauer")] <- Mauer2_face
+Mauer2_face
+
+Mauer3_face <- alldata_F[which(as.character(alldata_F$target) == "Mauer"), c("bas_tcthird")]
+alldata_F$successfulcues_BAS[which(as.character(alldata_F$target) == "Mauer")] <- Mauer3_face
+Mauer3_face
+
+Mauer4_face <- alldata_F[which(as.character(alldata_F$target) == "Mauer"), c("bas_tcfourth")]
+alldata_F$successfulcues_BAS[which(as.character(alldata_F$target) == "Mauer")] <- Mauer4_face
+Mauer4_face
+
+Mauer5_face <- alldata_F[which(as.character(alldata_F$target) == "Mauer"), c("bas_tcfifth")]
+alldata_F$successfulcues_BAS[which(as.character(alldata_F$target) == "Mauer")] <- Mauer5_face
+Mauer5_face
+
+#FACE
+#Knochen 
+Knochen1_face <- alldata_F[which(as.character(alldata_F$target) == "Knochen"), c("bas_tcfirst")]
+alldata_F$successfulcues_BAS[which(as.character(alldata_F$target) == "Knochen")] <- Knochen1_face
+Knochen1_face
+
+Knochen2_face <- alldata_F[which(as.character(alldata_F$target) == "Knochen"), c("bas_tcsecond")]
+alldata_F$successfulcues_BAS[which(as.character(alldata_F$target) == "Knochen")] <- Knochen2_face
+Knochen2_face
+
+Knochen3_face <- alldata_F[which(as.character(alldata_F$target) == "Knochen"), c("bas_tcthird")]
+alldata_F$successfulcues_BAS[which(as.character(alldata_F$target) == "Knochen")] <- Knochen3_face
+Knochen3_face
+
+Knochen4_face <- alldata_F[which(as.character(alldata_F$target) == "Knochen"), c("bas_tcfourth")]
+alldata_F$successfulcues_BAS[which(as.character(alldata_F$target) == "Knochen")] <- Knochen4_face
+Knochen4_face
+
+Knochen5_face <- alldata_F[which(as.character(alldata_F$target) == "Knochen"), c("bas_tcfifth")]
+alldata_F$successfulcues_BAS[which(as.character(alldata_F$target) == "Knochen")] <- Knochen5_face
+Knochen5_face
+
+
+#FACE
+#Pilz 
+Pilz1_face <- alldata_F[which(as.character(alldata_F$target) == "Pilz"), c("bas_tcfirst")]
+alldata_F$successfulcues_BAS[which(as.character(alldata_F$target) == "Pilz")] <- Pilz1_face
+Pilz1_face
+
+Pilz2_face <- alldata_F[which(as.character(alldata_F$target) == "Pilz"), c("bas_tcsecond")]
+alldata_F$successfulcues_BAS[which(as.character(alldata_F$target) == "Pilz")] <- Pilz2_face
+Pilz2_face
+
+Pilz3_face <- alldata_F[which(as.character(alldata_F$target) == "Pilz"), c("bas_tcthird")]
+alldata_F$successfulcues_BAS[which(as.character(alldata_F$target) == "Pilz")] <- Pilz3_face
+Pilz3_face
+
+Pilz4_face <- alldata_F[which(as.character(alldata_F$target) == "Pilz"), c("bas_tcfourth")]
+alldata_F$successfulcues_BAS[which(as.character(alldata_F$target) == "Pilz")] <- Pilz4_face
+Pilz4_face
+
+Pilz5_face <- alldata_F[which(as.character(alldata_F$target) == "Pilz"), c("bas_tcfifth")]
+alldata_F$successfulcues_BAS[which(as.character(alldata_F$target) == "Pilz")] <- Pilz5_face
+Pilz5_face
+
+#FACE
+#Brücke 
+Brücke1_face <- alldata_F[which(as.character(alldata_F$target) == "Brücke"), c("bas_tcfirst")]
+alldata_F$successfulcues_BAS[which(as.character(alldata_F$target) == "Brücke")] <- Brücke1_face
+Brücke1_face
+
+Brücke2_face <- alldata_F[which(as.character(alldata_F$target) == "Brücke"), c("bas_tcsecond")]
+alldata_F$successfulcues_BAS[which(as.character(alldata_F$target) == "Brücke")] <- Brücke2_face
+Brücke2_face
+
+Brücke3_face <- alldata_F[which(as.character(alldata_F$target) == "Brücke"), c("bas_tcthird")]
+alldata_F$successfulcues_BAS[which(as.character(alldata_F$target) == "Brücke")] <- Brücke3_face
+Brücke3_face
+
+Brücke4_face <- alldata_F[which(as.character(alldata_F$target) == "Brücke"), c("bas_tcfourth")]
+alldata_F$successfulcues_BAS[which(as.character(alldata_F$target) == "Brücke")] <- Brücke4_face
+Brücke4_face
+
+Brücke5_face <- alldata_F[which(as.character(alldata_F$target) == "Brücke"), c("bas_tcfifth")]
+alldata_F$successfulcues_BAS[which(as.character(alldata_F$target) == "Brücke")] <- Brücke5_face
+Brücke5_face
+
+```
+
+
+
+#non-face
+
+```{r}
+alldata$target<-gsub(" ", "", alldata$target, fixed = TRUE)
+alldata_NF<-alldata %>% filter(condition=='non-face')
+
+print(alldata_NF)
+#alldata_NF$target<-gsub(" ", "", alldata$target, fixed = TRUE)
+
+#non-face
+#English
+#nonface
+#bulb 
+bulb1_nonface <- alldata_NF[which(as.character(alldata_NF$target) == "bulb"), c("bas_tcfirst")]
+alldata_NF$successfulcues_BAS[which(as.character(alldata_NF$target) == "bulb")] <- bulb1_nonface
+bulb1_nonface
+
+bulb2_nonface <- alldata_NF[which(as.character(alldata_NF$target) == "bulb"), c("bas_tcsecond")]
+alldata_NF$successfulcues_BAS[which(as.character(alldata_NF$target) == "bulb")] <- bulb2_nonface
+bulb2_nonface
+
+bulb3_nonface <- alldata_NF[which(as.character(alldata_NF$target) == "bulb"), c("bas_tcthird")]
+alldata_NF$successfulcues_BAS[which(as.character(alldata_NF$target) == "bulb")] <- bulb3_nonface
+bulb3_nonface
+
+bulb4_nonface <- alldata_NF[which(as.character(alldata_NF$target) == "bulb"), c("bas_tcfourth")]
+alldata_NF$successfulcues_BAS[which(as.character(alldata_NF$target) == "bulb")] <- bulb4_nonface
+bulb4_nonface
+
+bulb5_nonface <- alldata_NF[which(as.character(alldata_NF$target) == "bulb"), c("bas_tcfifth")]
+alldata_NF$successfulcues_BAS[which(as.character(alldata_NF$target) == "bulb")] <- bulb5_nonface
+bulb5_nonface
+
+
+#nonface
+#bank 
+bank1_nonface <- alldata_NF[which(as.character(alldata_NF$target) == "bank"), c("bas_tcfirst")]
+alldata_NF$successfulcues_BAS[which(as.character(alldata_NF$target) == "bank")] <- bank1_nonface
+bank1_nonface
+
+bank2_nonface <- alldata_NF[which(as.character(alldata_NF$target) == "bank"), c("bas_tcsecond")]
+alldata_NF$successfulcues_BAS[which(as.character(alldata_NF$target) == "bank")] <- bank2_nonface
+bank2_nonface
+
+bank3_nonface <- alldata_NF[which(as.character(alldata_NF$target) == "bank"), c("bas_tcthird")]
+alldata_NF$successfulcues_BAS[which(as.character(alldata_NF$target) == "bank")] <- bank3_nonface
+bank3_nonface
+
+bank4_nonface <- alldata_NF[which(as.character(alldata_NF$target) == "bank"), c("bas_tcfourth")]
+alldata_NF$successfulcues_BAS[which(as.character(alldata_NF$target) == "bank")] <- bank4_nonface
+bank4_nonface
+
+bank5_nonface <- alldata_NF[which(as.character(alldata_NF$target) == "bank"), c("bas_tcfifth")]
+alldata_NF$successfulcues_BAS[which(as.character(alldata_NF$target) == "bank")] <- bank5_nonface
+bank5_nonface
+
+#nonface
+#brewery 
+brewery1_nonface <- alldata_NF[which(as.character(alldata_NF$target) == "brewery"), c("bas_tcfirst")]
+alldata_NF$successfulcues_BAS[which(as.character(alldata_NF$target) == "brewery")] <- brewery1_nonface
+brewery1_nonface
+
+brewery2_nonface <- alldata_NF[which(as.character(alldata_NF$target) == "brewery"), c("bas_tcsecond")]
+alldata_NF$successfulcues_BAS[which(as.character(alldata_NF$target) == "brewery")] <- brewery2_nonface
+brewery2_nonface
+
+brewery3_nonface <- alldata_NF[which(as.character(alldata_NF$target) == "brewery"), c("bas_tcthird")]
+alldata_NF$successfulcues_BAS[which(as.character(alldata_NF$target) == "brewery")] <- brewery3_nonface
+brewery3_nonface
+
+brewery4_nonface <- alldata_NF[which(as.character(alldata_NF$target) == "brewery"), c("bas_tcfourth")]
+alldata_NF$successfulcues_BAS[which(as.character(alldata_NF$target) == "brewery")] <- brewery4_nonface
+brewery4_nonface
+
+brewery5_nonface <- alldata_NF[which(as.character(alldata_NF$target) == "brewery"), c("bas_tcfifth")]
+alldata_NF$successfulcues_BAS[which(as.character(alldata_NF$target) == "brewery")] <- brewery5_nonface
+brewery5_nonface
+
+
+
+#nonface
+#crescent 
+crescent1_nonface <- alldata_NF[which(as.character(alldata_NF$target) == "crescent"), c("bas_tcfirst")]
+alldata_NF$successfulcues_BAS[which(as.character(alldata_NF$target) == "crescent")] <- crescent1_nonface
+crescent1_nonface
+
+crescent2_nonface <- alldata_NF[which(as.character(alldata_NF$target) == "crescent"), c("bas_tcsecond")]
+alldata_NF$successfulcues_BAS[which(as.character(alldata_NF$target) == "crescent")] <- crescent2_nonface
+crescent2_nonface
+
+crescent3_nonface <- alldata_NF[which(as.character(alldata_NF$target) == "crescent"), c("bas_tcthird")]
+alldata_NF$successfulcues_BAS[which(as.character(alldata_NF$target) == "crescent")] <- crescent3_nonface
+crescent3_nonface
+
+crescent4_nonface <- alldata_NF[which(as.character(alldata_NF$target) == "crescent"), c("bas_tcfourth")]
+alldata_NF$successfulcues_BAS[which(as.character(alldata_NF$target) == "crescent")] <- crescent4_nonface
+crescent4_nonface
+
+crescent5_nonface <- alldata_NF[which(as.character(alldata_NF$target) == "crescent"), c("bas_tcfifth")]
+alldata_NF$successfulcues_BAS[which(as.character(alldata_NF$target) == "crescent")] <- crescent5_nonface
+crescent5_nonface
+
+
+#nonface
+#affection 
+affection1_nonface <- alldata_NF[which(as.character(alldata_NF$target) == "affection"), c("bas_tcfirst")]
+alldata_NF$successfulcues_BAS[which(as.character(alldata_NF$target) == "affection")] <- affection1_nonface
+affection1_nonface
+
+affection2_nonface <- alldata_NF[which(as.character(alldata_NF$target) == "affection"), c("bas_tcsecond")]
+alldata_NF$successfulcues_BAS[which(as.character(alldata_NF$target) == "affection")] <- affection2_nonface
+affection2_nonface
+
+affection3_nonface <- alldata_NF[which(as.character(alldata_NF$target) == "affection"), c("bas_tcthird")]
+alldata_NF$successfulcues_BAS[which(as.character(alldata_NF$target) == "affection")] <- affection3_nonface
+affection3_nonface
+
+affection4_nonface <- alldata_NF[which(as.character(alldata_NF$target) == "affection"), c("bas_tcfourth")]
+alldata_NF$successfulcues_BAS[which(as.character(alldata_NF$target) == "affection")] <- affection4_nonface
+affection4_nonface
+
+affection5_nonface <- alldata_NF[which(as.character(alldata_NF$target) == "affection"), c("bas_tcfifth")]
+alldata_NF$successfulcues_BAS[which(as.character(alldata_NF$target) == "affection")] <- affection5_nonface
+affection5_nonface
+
+#nonface
+#sill 
+sill1_nonface <- alldata_NF[which(as.character(alldata_NF$target) == "sill"), c("bas_tcfirst")]
+alldata_NF$successfulcues_BAS[which(as.character(alldata_NF$target) == "sill")] <- sill1_nonface
+sill1_nonface
+
+sill2_nonface <- alldata_NF[which(as.character(alldata_NF$target) == "sill"), c("bas_tcsecond")]
+alldata_NF$successfulcues_BAS[which(as.character(alldata_NF$target) == "sill")] <- sill2_nonface
+sill2_nonface
+
+sill3_nonface <- alldata_NF[which(as.character(alldata_NF$target) == "sill"), c("bas_tcthird")]
+alldata_NF$successfulcues_BAS[which(as.character(alldata_NF$target) == "sill")] <- sill3_nonface
+sill3_nonface
+
+sill4_nonface <- alldata_NF[which(as.character(alldata_NF$target) == "sill"), c("bas_tcfourth")]
+alldata_NF$successfulcues_BAS[which(as.character(alldata_NF$target) == "sill")] <- sill4_nonface
+sill4_nonface
+
+sill5_nonface <- alldata_NF[which(as.character(alldata_NF$target) == "sill"), c("bas_tcfifth")]
+alldata_NF$successfulcues_BAS[which(as.character(alldata_NF$target) == "sill")] <- sill5_nonface
+sill5_nonface
+
+
+
+#nonface
+#yolk 
+yolk1_nonface <- alldata_NF[which(as.character(alldata_NF$target) == "yolk"), c("bas_tcfirst")]
+alldata_NF$successfulcues_BAS[which(as.character(alldata_NF$target) == "yolk")] <- yolk1_nonface
+yolk1_nonface
+
+yolk2_nonface <- alldata_NF[which(as.character(alldata_NF$target) == "yolk"), c("bas_tcsecond")]
+alldata_NF$successfulcues_BAS[which(as.character(alldata_NF$target) == "yolk")] <- yolk2_nonface
+yolk2_nonface
+
+yolk3_nonface <- alldata_NF[which(as.character(alldata_NF$target) == "yolk"), c("bas_tcthird")]
+alldata_NF$successfulcues_BAS[which(as.character(alldata_NF$target) == "yolk")] <- yolk3_nonface
+yolk3_nonface
+
+yolk4_nonface <- alldata_NF[which(as.character(alldata_NF$target) == "yolk"), c("bas_tcfourth")]
+alldata_NF$successfulcues_BAS[which(as.character(alldata_NF$target) == "yolk")] <- yolk4_nonface
+yolk4_nonface
+
+yolk5_nonface <- alldata_NF[which(as.character(alldata_NF$target) == "yolk"), c("bas_tcfifth")]
+alldata_NF$successfulcues_BAS[which(as.character(alldata_NF$target) == "yolk")] <- yolk5_nonface
+yolk5_nonface
+
+
+#nonface
+#loaf 
+loaf1_nonface <- alldata_NF[which(as.character(alldata_NF$target) == "loaf"), c("bas_tcfirst")]
+alldata_NF$successfulcues_BAS[which(as.character(alldata_NF$target) == "loaf")] <- loaf1_nonface
+loaf1_nonface
+
+loaf2_nonface <- alldata_NF[which(as.character(alldata_NF$target) == "loaf"), c("bas_tcsecond")]
+alldata_NF$successfulcues_BAS[which(as.character(alldata_NF$target) == "loaf")] <- loaf2_nonface
+loaf2_nonface
+
+loaf3_nonface <- alldata_NF[which(as.character(alldata_NF$target) == "loaf"), c("bas_tcthird")]
+alldata_NF$successfulcues_BAS[which(as.character(alldata_NF$target) == "loaf")] <- loaf3_nonface
+loaf3_nonface
+
+loaf4_nonface <- alldata_NF[which(as.character(alldata_NF$target) == "loaf"), c("bas_tcfourth")]
+alldata_NF$successfulcues_BAS[which(as.character(alldata_NF$target) == "loaf")] <- loaf4_nonface
+loaf4_nonface
+
+loaf5_nonface <- alldata_NF[which(as.character(alldata_NF$target) == "loaf"), c("bas_tcfifth")]
+alldata_NF$successfulcues_BAS[which(as.character(alldata_NF$target) == "loaf")] <- loaf5_nonface
+loaf5_nonface
+
+
+#nonface
+#cob 
+cob1_nonface <- alldata_NF[which(as.character(alldata_NF$target) == "cob"), c("bas_tcfirst")]
+alldata_NF$successfulcues_BAS[which(as.character(alldata_NF$target) == "cob")] <- cob1_nonface
+cob1_nonface
+
+cob2_nonface <- alldata_NF[which(as.character(alldata_NF$target) == "cob"), c("bas_tcsecond")]
+alldata_NF$successfulcues_BAS[which(as.character(alldata_NF$target) == "cob")] <- cob2_nonface
+cob2_nonface
+
+cob3_nonface <- alldata_NF[which(as.character(alldata_NF$target) == "cob"), c("bas_tcthird")]
+alldata_NF$successfulcues_BAS[which(as.character(alldata_NF$target) == "cob")] <- cob3_nonface
+cob3_nonface
+
+cob4_nonface <- alldata_NF[which(as.character(alldata_NF$target) == "cob"), c("bas_tcfourth")]
+alldata_NF$successfulcues_BAS[which(as.character(alldata_NF$target) == "cob")] <- cob4_nonface
+cob4_nonface
+
+cob5_nonface <- alldata_NF[which(as.character(alldata_NF$target) == "cob"), c("bas_tcfifth")]
+alldata_NF$successfulcues_BAS[which(as.character(alldata_NF$target) == "cob")] <- cob5_nonface
+cob5_nonface
+
+
+#nonface
+#retina 
+retina1_nonface <- alldata_NF[which(as.character(alldata_NF$target) == "retina"), c("bas_tcfirst")]
+alldata_NF$successfulcues_BAS[which(as.character(alldata_NF$target) == "retina")] <- retina1_nonface
+retina1_nonface
+
+retina2_nonface <- alldata_NF[which(as.character(alldata_NF$target) == "retina"), c("bas_tcsecond")]
+alldata_NF$successfulcues_BAS[which(as.character(alldata_NF$target) == "retina")] <- retina2_nonface
+retina2_nonface
+
+retina3_nonface <- alldata_NF[which(as.character(alldata_NF$target) == "retina"), c("bas_tcthird")]
+alldata_NF$successfulcues_BAS[which(as.character(alldata_NF$target) == "retina")] <- retina3_nonface
+retina3_nonface
+
+retina4_nonface <- alldata_NF[which(as.character(alldata_NF$target) == "retina"), c("bas_tcfourth")]
+alldata_NF$successfulcues_BAS[which(as.character(alldata_NF$target) == "retina")] <- retina4_nonface
+retina4_nonface
+
+retina5_nonface <- alldata_NF[which(as.character(alldata_NF$target) == "retina"), c("bas_tcfifth")]
+alldata_NF$successfulcues_BAS[which(as.character(alldata_NF$target) == "retina")] <- retina5_nonface
+retina5_nonface
+
+
+#nonface
+#grater 
+grater1_nonface <- alldata_NF[which(as.character(alldata_NF$target) == "grater"), c("bas_tcfirst")]
+alldata_NF$successfulcues_BAS[which(as.character(alldata_NF$target) == "grater")] <- grater1_nonface
+grater1_nonface
+
+grater2_nonface <- alldata_NF[which(as.character(alldata_NF$target) == "grater"), c("bas_tcsecond")]
+alldata_NF$successfulcues_BAS[which(as.character(alldata_NF$target) == "grater")] <- grater2_nonface
+grater2_nonface
+
+grater3_nonface <- alldata_NF[which(as.character(alldata_NF$target) == "grater"), c("bas_tcthird")]
+alldata_NF$successfulcues_BAS[which(as.character(alldata_NF$target) == "grater")] <- grater3_nonface
+grater3_nonface
+
+grater4_nonface <- alldata_NF[which(as.character(alldata_NF$target) == "grater"), c("bas_tcfourth")]
+alldata_NF$successfulcues_BAS[which(as.character(alldata_NF$target) == "grater")] <- grater4_nonface
+grater4_nonface
+
+grater5_nonface <- alldata_NF[which(as.character(alldata_NF$target) == "grater"), c("bas_tcfifth")]
+alldata_NF$successfulcues_BAS[which(as.character(alldata_NF$target) == "grater")] <- grater5_nonface
+grater5_nonface
+
+
+#nonface
+#steed 
+steed1_nonface <- alldata_NF[which(as.character(alldata_NF$target) == "steed"), c("bas_tcfirst")]
+alldata_NF$successfulcues_BAS[which(as.character(alldata_NF$target) == "steed")] <- steed1_nonface
+steed1_nonface
+
+steed2_nonface <- alldata_NF[which(as.character(alldata_NF$target) == "steed"), c("bas_tcsecond")]
+alldata_NF$successfulcues_BAS[which(as.character(alldata_NF$target) == "steed")] <- steed2_nonface
+steed2_nonface
+
+steed3_nonface <- alldata_NF[which(as.character(alldata_NF$target) == "steed"), c("bas_tcthird")]
+alldata_NF$successfulcues_BAS[which(as.character(alldata_NF$target) == "steed")] <- steed3_nonface
+steed3_nonface
+
+steed4_nonface <- alldata_NF[which(as.character(alldata_NF$target) == "steed"), c("bas_tcfourth")]
+alldata_NF$successfulcues_BAS[which(as.character(alldata_NF$target) == "steed")] <- steed4_nonface
+steed4_nonface
+
+steed5_nonface <- alldata_NF[which(as.character(alldata_NF$target) == "steed"), c("bas_tcfifth")]
+alldata_NF$successfulcues_BAS[which(as.character(alldata_NF$target) == "steed")] <- steed5_nonface
+steed5_nonface
+
+#nonface
+#pepperoni 
+pepperoni1_nonface <- alldata_NF[which(as.character(alldata_NF$target) == "pepperoni"), c("bas_tcfirst")]
+alldata_NF$successfulcues_BAS[which(as.character(alldata_NF$target) == "pepperoni")] <- pepperoni1_nonface
+pepperoni1_nonface
+
+pepperoni2_nonface <- alldata_NF[which(as.character(alldata_NF$target) == "pepperoni"), c("bas_tcsecond")]
+alldata_NF$successfulcues_BAS[which(as.character(alldata_NF$target) == "pepperoni")] <- pepperoni2_nonface
+pepperoni2_nonface
+
+pepperoni3_nonface <- alldata_NF[which(as.character(alldata_NF$target) == "pepperoni"), c("bas_tcthird")]
+alldata_NF$successfulcues_BAS[which(as.character(alldata_NF$target) == "pepperoni")] <- pepperoni3_nonface
+pepperoni3_nonface
+
+pepperoni4_nonface <- alldata_NF[which(as.character(alldata_NF$target) == "pepperoni"), c("bas_tcfourth")]
+alldata_NF$successfulcues_BAS[which(as.character(alldata_NF$target) == "pepperoni")] <- pepperoni4_nonface
+pepperoni4_nonface
+
+pepperoni5_nonface <- alldata_NF[which(as.character(alldata_NF$target) == "pepperoni"), c("bas_tcfifth")]
+alldata_NF$successfulcues_BAS[which(as.character(alldata_NF$target) == "pepperoni")] <- pepperoni5_nonface
+pepperoni5_nonface
+
+
+#nonface
+#cod 
+cod1_nonface <- alldata_NF[which(as.character(alldata_NF$target) == "cod"), c("bas_tcfirst")]
+alldata_NF$successfulcues_BAS[which(as.character(alldata_NF$target) == "cod")] <- cod1_nonface
+cod1_nonface
+
+cod2_nonface <- alldata_NF[which(as.character(alldata_NF$target) == "cod"), c("bas_tcsecond")]
+alldata_NF$successfulcues_BAS[which(as.character(alldata_NF$target) == "cod")] <- cod2_nonface
+cod2_nonface
+
+cod3_nonface <- alldata_NF[which(as.character(alldata_NF$target) == "cod"), c("bas_tcthird")]
+alldata_NF$successfulcues_BAS[which(as.character(alldata_NF$target) == "cod")] <- cod3_nonface
+cod3_nonface
+
+cod4_nonface <- alldata_NF[which(as.character(alldata_NF$target) == "cod"), c("bas_tcfourth")]
+alldata_NF$successfulcues_BAS[which(as.character(alldata_NF$target) == "cod")] <- cod4_nonface
+cod4_nonface
+
+cod5_nonface <- alldata_NF[which(as.character(alldata_NF$target) == "cod"), c("bas_tcfifth")]
+alldata_NF$successfulcues_BAS[which(as.character(alldata_NF$target) == "cod")] <- cod5_nonface
+cod5_nonface
+
+
+
+#nonface
+#crossword 
+crossword1_nonface <- alldata_NF[which(as.character(alldata_NF$target) == "crossword"), c("bas_tcfirst")]
+alldata_NF$successfulcues_BAS[which(as.character(alldata_NF$target) == "crossword")] <- crossword1_nonface
+crossword1_nonface
+
+crossword2_nonface <- alldata_NF[which(as.character(alldata_NF$target) == "crossword"), c("bas_tcsecond")]
+alldata_NF$successfulcues_BAS[which(as.character(alldata_NF$target) == "crossword")] <- crossword2_nonface
+crossword2_nonface
+
+crossword3_nonface <- alldata_NF[which(as.character(alldata_NF$target) == "crossword"), c("bas_tcthird")]
+alldata_NF$successfulcues_BAS[which(as.character(alldata_NF$target) == "crossword")] <- crossword3_nonface
+crossword3_nonface
+
+crossword4_nonface <- alldata_NF[which(as.character(alldata_NF$target) == "crossword"), c("bas_tcfourth")]
+alldata_NF$successfulcues_BAS[which(as.character(alldata_NF$target) == "crossword")] <- crossword4_nonface
+crossword4_nonface
+
+crossword5_nonface <- alldata_NF[which(as.character(alldata_NF$target) == "crossword"), c("bas_tcfifth")]
+alldata_NF$successfulcues_BAS[which(as.character(alldata_NF$target) == "crossword")] <- crossword5_nonface
+crossword5_nonface
+
+
+#nonface
+#blaze 
+blaze1_nonface <- alldata_NF[which(as.character(alldata_NF$target) == "blaze"), c("bas_tcfirst")]
+alldata_NF$successfulcues_BAS[which(as.character(alldata_NF$target) == "blaze")] <- blaze1_nonface
+blaze1_nonface
+
+blaze2_nonface <- alldata_NF[which(as.character(alldata_NF$target) == "blaze"), c("bas_tcsecond")]
+alldata_NF$successfulcues_BAS[which(as.character(alldata_NF$target) == "blaze")] <- blaze2_nonface
+blaze2_nonface
+
+blaze3_nonface <- alldata_NF[which(as.character(alldata_NF$target) == "blaze"), c("bas_tcthird")]
+alldata_NF$successfulcues_BAS[which(as.character(alldata_NF$target) == "blaze")] <- blaze3_nonface
+blaze3_nonface
+
+blaze4_nonface <- alldata_NF[which(as.character(alldata_NF$target) == "blaze"), c("bas_tcfourth")]
+alldata_NF$successfulcues_BAS[which(as.character(alldata_NF$target) == "blaze")] <- blaze4_nonface
+blaze4_nonface
+
+blaze5_nonface <- alldata_NF[which(as.character(alldata_NF$target) == "blaze"), c("bas_tcfifth")]
+alldata_NF$successfulcues_BAS[which(as.character(alldata_NF$target) == "blaze")] <- blaze5_nonface
+blaze5_nonface
+
+#nonface
+#occupation
+
+occupation1_nonface <- alldata_NF[which(as.character(alldata_NF$target) == "occupation"), c("bas_tcfirst")]
+alldata_NF$successfulcues_BAS[which(as.character(alldata_NF$target) == "occupation")] <- occupation1_nonface
+occupation1_nonface
+
+occupation2_nonface <- alldata_NF[which(as.character(alldata_NF$target) == "occupation"), c("bas_tcsecond")]
+alldata_NF$successfulcues_BAS[which(as.character(alldata_NF$target) == "occupation")] <- occupation2_nonface
+occupation2_nonface
+
+occupation3_nonface <- alldata_NF[which(as.character(alldata_NF$target) == "occupation"), c("bas_tcthird")]
+alldata_NF$successfulcues_BAS[which(as.character(alldata_NF$target) == "occupation")] <- occupation3_nonface
+occupation3_nonface
+
+occupation4_nonface <- alldata_NF[which(as.character(alldata_NF$target) == "occupation"), c("bas_tcfourth")]
+alldata_NF$successfulcues_BAS[which(as.character(alldata_NF$target) == "occupation")] <- occupation4_nonface
+occupation4_nonface
+
+occupation5_nonface <- alldata_NF[which(as.character(alldata_NF$target) == "occupation"), c("bas_tcfifth")]
+alldata_NF$successfulcues_BAS[which(as.character(alldata_NF$target) == "occupation")] <- occupation5_nonface
+occupation5_nonface
+
+#nonface
+#butcher 
+butcher1_nonface <- alldata_NF[which(as.character(alldata_NF$target) == "butcher"), c("bas_tcfirst")]
+alldata_NF$successfulcues_BAS[which(as.character(alldata_NF$target) == "butcher")] <- butcher1_nonface
+butcher1_nonface
+
+butcher2_nonface <- alldata_NF[which(as.character(alldata_NF$target) == "butcher"), c("bas_tcsecond")]
+alldata_NF$successfulcues_BAS[which(as.character(alldata_NF$target) == "butcher")] <- butcher2_nonface
+butcher2_nonface
+
+butcher3_nonface <- alldata_NF[which(as.character(alldata_NF$target) == "butcher"), c("bas_tcthird")]
+alldata_NF$successfulcues_BAS[which(as.character(alldata_NF$target) == "butcher")] <- butcher3_nonface
+butcher3_nonface
+
+butcher4_nonface <- alldata_NF[which(as.character(alldata_NF$target) == "butcher"), c("bas_tcfourth")]
+alldata_NF$successfulcues_BAS[which(as.character(alldata_NF$target) == "butcher")] <- butcher4_nonface
+butcher4_nonface
+
+butcher5_nonface <- alldata_NF[which(as.character(alldata_NF$target) == "butcher"), c("bas_tcfifth")]
+alldata_NF$successfulcues_BAS[which(as.character(alldata_NF$target) == "butcher")] <- butcher5_nonface
+butcher5_nonface
+
+
+#nonface
+#bouquet 
+bouquet1_nonface <- alldata_NF[which(as.character(alldata_NF$target) == "bouquet"), c("bas_tcfirst")]
+alldata_NF$successfulcues_BAS[which(as.character(alldata_NF$target) == "bouquet")] <- bouquet1_nonface
+bouquet1_nonface
+
+bouquet2_nonface <- alldata_NF[which(as.character(alldata_NF$target) == "bouquet"), c("bas_tcsecond")]
+alldata_NF$successfulcues_BAS[which(as.character(alldata_NF$target) == "bouquet")] <- bouquet2_nonface
+bouquet2_nonface
+
+bouquet3_nonface <- alldata_NF[which(as.character(alldata_NF$target) == "bouquet"), c("bas_tcthird")]
+alldata_NF$successfulcues_BAS[which(as.character(alldata_NF$target) == "bouquet")] <- bouquet3_nonface
+bouquet3_nonface
+
+bouquet4_nonface <- alldata_NF[which(as.character(alldata_NF$target) == "bouquet"), c("bas_tcfourth")]
+alldata_NF$successfulcues_BAS[which(as.character(alldata_NF$target) == "bouquet")] <- bouquet4_nonface
+bouquet4_nonface
+
+bouquet5_nonface <- alldata_NF[which(as.character(alldata_NF$target) == "bouquet"), c("bas_tcfifth")]
+alldata_NF$successfulcues_BAS[which(as.character(alldata_NF$target) == "bouquet")] <- bouquet5_nonface
+bouquet5_nonface
+
+#nonface
+#acquaintance 
+acquaintance1_nonface <- alldata_NF[which(as.character(alldata_NF$target) == "acquaintance"), c("bas_tcfirst")]
+alldata_NF$successfulcues_BAS[which(as.character(alldata_NF$target) == "acquaintance")] <- acquaintance1_nonface
+acquaintance1_nonface
+
+acquaintance2_nonface <- alldata_NF[which(as.character(alldata_NF$target) == "acquaintance"), c("bas_tcsecond")]
+alldata_NF$successfulcues_BAS[which(as.character(alldata_NF$target) == "acquaintance")] <- acquaintance2_nonface
+acquaintance2_nonface
+
+acquaintance3_nonface <- alldata_NF[which(as.character(alldata_NF$target) == "acquaintance"), c("bas_tcthird")]
+alldata_NF$successfulcues_BAS[which(as.character(alldata_NF$target) == "acquaintance")] <- acquaintance3_nonface
+acquaintance3_nonface
+
+acquaintance4_nonface <- alldata_NF[which(as.character(alldata_NF$target) == "acquaintance"), c("bas_tcfourth")]
+alldata_NF$successfulcues_BAS[which(as.character(alldata_NF$target) == "acquaintance")] <- acquaintance4_nonface
+acquaintance4_nonface
+
+acquaintance5_nonface <- alldata_NF[which(as.character(alldata_NF$target) == "acquaintance"), c("bas_tcfifth")]
+alldata_NF$successfulcues_BAS[which(as.character(alldata_NF$target) == "acquaintance")] <- acquaintance5_nonface
+acquaintance5_nonface
+
+#German non-nonface
+#Krone 
+Krone1_nonface <- alldata_NF[which(as.character(alldata_NF$target) == "Krone"), c("bas_tcfirst")]
+alldata_NF$successfulcues_BAS[which(as.character(alldata_NF$target) == "Krone")] <- Krone1_nonface
+Krone1_nonface
+
+Krone2_nonface <- alldata_NF[which(as.character(alldata_NF$target) == "Krone"), c("bas_tcsecond")]
+alldata_NF$successfulcues_BAS[which(as.character(alldata_NF$target) == "Krone")] <- Krone2_nonface
+Krone2_nonface
+
+Krone3_nonface <- alldata_NF[which(as.character(alldata_NF$target) == "Krone"), c("bas_tcthird")]
+alldata_NF$successfulcues_BAS[which(as.character(alldata_NF$target) == "Krone")] <- Krone3_nonface
+Krone3_nonface
+
+Krone4_nonface <- alldata_NF[which(as.character(alldata_NF$target) == "Krone"), c("bas_tcfourth")]
+alldata_NF$successfulcues_BAS[which(as.character(alldata_NF$target) == "Krone")] <- Krone4_nonface
+Krone4_nonface
+
+Krone5_nonface <- alldata_NF[which(as.character(alldata_NF$target) == "Krone"), c("bas_tcfifth")]
+alldata_NF$successfulcues_BAS[which(as.character(alldata_NF$target) == "Krone")] <- Krone5_nonface
+Krone5_nonface
+
+
+#nonface
+#Hafen 
+Hafen1_nonface <- alldata_NF[which(as.character(alldata_NF$target) == "Hafen"), c("bas_tcfirst")]
+alldata_NF$successfulcues_BAS[which(as.character(alldata_NF$target) == "Hafen")] <- Hafen1_nonface
+Hafen1_nonface
+
+Hafen2_nonface <- alldata_NF[which(as.character(alldata_NF$target) == "Hafen"), c("bas_tcsecond")]
+alldata_NF$successfulcues_BAS[which(as.character(alldata_NF$target) == "Hafen")] <- Hafen2_nonface
+Hafen2_nonface
+
+Hafen3_nonface <- alldata_NF[which(as.character(alldata_NF$target) == "Hafen"), c("bas_tcthird")]
+alldata_NF$successfulcues_BAS[which(as.character(alldata_NF$target) == "Hafen")] <- Hafen3_nonface
+Hafen3_nonface
+
+Hafen4_nonface <- alldata_NF[which(as.character(alldata_NF$target) == "Hafen"), c("bas_tcfourth")]
+alldata_NF$successfulcues_BAS[which(as.character(alldata_NF$target) == "Hafen")] <- Hafen4_nonface
+Hafen4_nonface
+
+Hafen5_nonface <- alldata_NF[which(as.character(alldata_NF$target) == "Hafen"), c("bas_tcfifth")]
+alldata_NF$successfulcues_BAS[which(as.character(alldata_NF$target) == "Hafen")] <- Hafen5_nonface
+Hafen5_nonface
+
+#nonface
+#Brunnen 
+Brunnen1_nonface <- alldata_NF[which(as.character(alldata_NF$target) == "Brunnen"), c("bas_tcfirst")]
+alldata_NF$successfulcues_BAS[which(as.character(alldata_NF$target) == "Brunnen")] <- Brunnen1_nonface
+Brunnen1_nonface
+
+Brunnen2_nonface <- alldata_NF[which(as.character(alldata_NF$target) == "Brunnen"), c("bas_tcsecond")]
+alldata_NF$successfulcues_BAS[which(as.character(alldata_NF$target) == "Brunnen")] <- Brunnen2_nonface
+Brunnen2_nonface
+
+Brunnen3_nonface <- alldata_NF[which(as.character(alldata_NF$target) == "Brunnen"), c("bas_tcthird")]
+alldata_NF$successfulcues_BAS[which(as.character(alldata_NF$target) == "Brunnen")] <- Brunnen3_nonface
+Brunnen3_nonface
+
+Brunnen4_nonface <- alldata_NF[which(as.character(alldata_NF$target) == "Brunnen"), c("bas_tcfourth")]
+alldata_NF$successfulcues_BAS[which(as.character(alldata_NF$target) == "Brunnen")] <- Brunnen4_nonface
+Brunnen4_nonface
+
+Brunnen5_nonface <- alldata_NF[which(as.character(alldata_NF$target) == "Brunnen"), c("bas_tcfifth")]
+alldata_NF$successfulcues_BAS[which(as.character(alldata_NF$target) == "Brunnen")] <- Brunnen5_nonface
+Brunnen5_nonface
+
+
+
+#nonface
+#Kamm 
+Kamm1_nonface <- alldata_NF[which(as.character(alldata_NF$target) == "Kamm"), c("bas_tcfirst")]
+alldata_NF$successfulcues_BAS[which(as.character(alldata_NF$target) == "Kamm")] <- Kamm1_nonface
+Kamm1_nonface
+
+Kamm2_nonface <- alldata_NF[which(as.character(alldata_NF$target) == "Kamm"), c("bas_tcsecond")]
+alldata_NF$successfulcues_BAS[which(as.character(alldata_NF$target) == "Kamm")] <- Kamm2_nonface
+Kamm2_nonface
+
+Kamm3_nonface <- alldata_NF[which(as.character(alldata_NF$target) == "Kamm"), c("bas_tcthird")]
+alldata_NF$successfulcues_BAS[which(as.character(alldata_NF$target) == "Kamm")] <- Kamm3_nonface
+Kamm3_nonface
+
+Kamm4_nonface <- alldata_NF[which(as.character(alldata_NF$target) == "Kamm"), c("bas_tcfourth")]
+alldata_NF$successfulcues_BAS[which(as.character(alldata_NF$target) == "Kamm")] <- Kamm4_nonface
+Kamm4_nonface
+
+Kamm5_nonface <- alldata_NF[which(as.character(alldata_NF$target) == "Kamm"), c("bas_tcfifth")]
+alldata_NF$successfulcues_BAS[which(as.character(alldata_NF$target) == "Kamm")] <- Kamm5_nonface
+Kamm5_nonface
+
+
+#nonface
+#Dach 
+Dach1_nonface <- alldata_NF[which(as.character(alldata_NF$target) == "Dach"), c("bas_tcfirst")]
+alldata_NF$successfulcues_BAS[which(as.character(alldata_NF$target) == "Dach")] <- Dach1_nonface
+Dach1_nonface
+
+Dach2_nonface <- alldata_NF[which(as.character(alldata_NF$target) == "Dach"), c("bas_tcsecond")]
+alldata_NF$successfulcues_BAS[which(as.character(alldata_NF$target) == "Dach")] <- Dach2_nonface
+Dach2_nonface
+
+Dach3_nonface <- alldata_NF[which(as.character(alldata_NF$target) == "Dach"), c("bas_tcthird")]
+alldata_NF$successfulcues_BAS[which(as.character(alldata_NF$target) == "Dach")] <- Dach3_nonface
+Dach3_nonface
+
+Dach4_nonface <- alldata_NF[which(as.character(alldata_NF$target) == "Dach"), c("bas_tcfourth")]
+alldata_NF$successfulcues_BAS[which(as.character(alldata_NF$target) == "Dach")] <- Dach4_nonface
+Dach4_nonface
+
+Dach5_nonface <- alldata_NF[which(as.character(alldata_NF$target) == "Dach"), c("bas_tcfifth")]
+alldata_NF$successfulcues_BAS[which(as.character(alldata_NF$target) == "Dach")] <- Dach5_nonface
+Dach5_nonface
+
+#nonface
+#Lilie 
+Lilie1_nonface <- alldata_NF[which(as.character(alldata_NF$target) == "Lilie"), c("bas_tcfirst")]
+alldata_NF$successfulcues_BAS[which(as.character(alldata_NF$target) == "Lilie")] <- Lilie1_nonface
+Lilie1_nonface
+
+Lilie2_nonface <- alldata_NF[which(as.character(alldata_NF$target) == "Lilie"), c("bas_tcsecond")]
+alldata_NF$successfulcues_BAS[which(as.character(alldata_NF$target) == "Lilie")] <- Lilie2_nonface
+Lilie2_nonface
+
+Lilie3_nonface <- alldata_NF[which(as.character(alldata_NF$target) == "Lilie"), c("bas_tcthird")]
+alldata_NF$successfulcues_BAS[which(as.character(alldata_NF$target) == "Lilie")] <- Lilie3_nonface
+Lilie3_nonface
+
+Lilie4_nonface <- alldata_NF[which(as.character(alldata_NF$target) == "Lilie"), c("bas_tcfourth")]
+alldata_NF$successfulcues_BAS[which(as.character(alldata_NF$target) == "Lilie")] <- Lilie4_nonface
+Lilie4_nonface
+
+Lilie5_nonface <- alldata_NF[which(as.character(alldata_NF$target) == "Lilie"), c("bas_tcfifth")]
+alldata_NF$successfulcues_BAS[which(as.character(alldata_NF$target) == "Lilie")] <- Lilie5_nonface
+Lilie5_nonface
+
+
+
+#nonface
+#Paddel 
+Paddel1_nonface <- alldata_NF[which(as.character(alldata_NF$target) == "Paddel"), c("bas_tcfirst")]
+alldata_NF$successfulcues_BAS[which(as.character(alldata_NF$target) == "Paddel")] <- Paddel1_nonface
+Paddel1_nonface
+
+Paddel2_nonface <- alldata_NF[which(as.character(alldata_NF$target) == "Paddel"), c("bas_tcsecond")]
+alldata_NF$successfulcues_BAS[which(as.character(alldata_NF$target) == "Paddel")] <- Paddel2_nonface
+Paddel2_nonface
+
+Paddel3_nonface <- alldata_NF[which(as.character(alldata_NF$target) == "Paddel"), c("bas_tcthird")]
+alldata_NF$successfulcues_BAS[which(as.character(alldata_NF$target) == "Paddel")] <- Paddel3_nonface
+Paddel3_nonface
+
+Paddel4_nonface <- alldata_NF[which(as.character(alldata_NF$target) == "Paddel"), c("bas_tcfourth")]
+alldata_NF$successfulcues_BAS[which(as.character(alldata_NF$target) == "Paddel")] <- Paddel4_nonface
+Paddel4_nonface
+
+Paddel5_nonface <- alldata_NF[which(as.character(alldata_NF$target) == "Paddel"), c("bas_tcfifth")]
+alldata_NF$successfulcues_BAS[which(as.character(alldata_NF$target) == "Paddel")] <- Paddel5_nonface
+Paddel5_nonface
+
+
+#nonface
+#Gebiss 
+Gebiss1_nonface <- alldata_NF[which(as.character(alldata_NF$target) == "Gebiss"), c("bas_tcfirst")]
+alldata_NF$successfulcues_BAS[which(as.character(alldata_NF$target) == "Gebiss")] <- Gebiss1_nonface
+Gebiss1_nonface
+
+Gebiss2_nonface <- alldata_NF[which(as.character(alldata_NF$target) == "Gebiss"), c("bas_tcsecond")]
+alldata_NF$successfulcues_BAS[which(as.character(alldata_NF$target) == "Gebiss")] <- Gebiss2_nonface
+Gebiss2_nonface
+
+Gebiss3_nonface <- alldata_NF[which(as.character(alldata_NF$target) == "Gebiss"), c("bas_tcthird")]
+alldata_NF$successfulcues_BAS[which(as.character(alldata_NF$target) == "Gebiss")] <- Gebiss3_nonface
+Gebiss3_nonface
+
+Gebiss4_nonface <- alldata_NF[which(as.character(alldata_NF$target) == "Gebiss"), c("bas_tcfourth")]
+alldata_NF$successfulcues_BAS[which(as.character(alldata_NF$target) == "Gebiss")] <- Gebiss4_nonface
+Gebiss4_nonface
+
+Gebiss5_nonface <- alldata_NF[which(as.character(alldata_NF$target) == "Gebiss"), c("bas_tcfifth")]
+alldata_NF$successfulcues_BAS[which(as.character(alldata_NF$target) == "Gebiss")] <- Gebiss5_nonface
+Gebiss5_nonface
+
+
+#nonface
+#Feder 
+Feder1_nonface <- alldata_NF[which(as.character(alldata_NF$target) == "Feder"), c("bas_tcfirst")]
+alldata_NF$successfulcues_BAS[which(as.character(alldata_NF$target) == "Feder")] <- Feder1_nonface
+Feder1_nonface
+
+Feder2_nonface <- alldata_NF[which(as.character(alldata_NF$target) == "Feder"), c("bas_tcsecond")]
+alldata_NF$successfulcues_BAS[which(as.character(alldata_NF$target) == "Feder")] <- Feder2_nonface
+Feder2_nonface
+
+Feder3_nonface <- alldata_NF[which(as.character(alldata_NF$target) == "Feder"), c("bas_tcthird")]
+alldata_NF$successfulcues_BAS[which(as.character(alldata_NF$target) == "Feder")] <- Feder3_nonface
+Feder3_nonface
+
+Feder4_nonface <- alldata_NF[which(as.character(alldata_NF$target) == "Feder"), c("bas_tcfourth")]
+alldata_NF$successfulcues_BAS[which(as.character(alldata_NF$target) == "Feder")] <- Feder4_nonface
+Feder4_nonface
+
+Feder5_nonface <- alldata_NF[which(as.character(alldata_NF$target) == "Feder"), c("bas_tcfifth")]
+alldata_NF$successfulcues_BAS[which(as.character(alldata_NF$target) == "Feder")] <- Feder5_nonface
+Feder5_nonface
+
+
+#nonface
+#Schirm 
+Schirm1_nonface <- alldata_NF[which(as.character(alldata_NF$target) == "Schirm"), c("bas_tcfirst")]
+alldata_NF$successfulcues_BAS[which(as.character(alldata_NF$target) == "Schirm")] <- Schirm1_nonface
+Schirm1_nonface
+
+Schirm2_nonface <- alldata_NF[which(as.character(alldata_NF$target) == "Schirm"), c("bas_tcsecond")]
+alldata_NF$successfulcues_BAS[which(as.character(alldata_NF$target) == "Schirm")] <- Schirm2_nonface
+Schirm2_nonface
+
+Schirm3_nonface <- alldata_NF[which(as.character(alldata_NF$target) == "Schirm"), c("bas_tcthird")]
+alldata_NF$successfulcues_BAS[which(as.character(alldata_NF$target) == "Schirm")] <- Schirm3_nonface
+Schirm3_nonface
+
+Schirm4_nonface <- alldata_NF[which(as.character(alldata_NF$target) == "Schirm"), c("bas_tcfourth")]
+alldata_NF$successfulcues_BAS[which(as.character(alldata_NF$target) == "Schirm")] <- Schirm4_nonface
+Schirm4_nonface
+
+Schirm5_nonface <- alldata_NF[which(as.character(alldata_NF$target) == "Schirm"), c("bas_tcfifth")]
+alldata_NF$successfulcues_BAS[which(as.character(alldata_NF$target) == "Schirm")] <- Schirm5_nonface
+Schirm5_nonface
+
+
+#nonface
+#Radio 
+Radio1_nonface <- alldata_NF[which(as.character(alldata_NF$target) == "Radio"), c("bas_tcfirst")]
+alldata_NF$successfulcues_BAS[which(as.character(alldata_NF$target) == "Radio")] <- Radio1_nonface
+Radio1_nonface
+
+Radio2_nonface <- alldata_NF[which(as.character(alldata_NF$target) == "Radio"), c("bas_tcsecond")]
+alldata_NF$successfulcues_BAS[which(as.character(alldata_NF$target) == "Radio")] <- Radio2_nonface
+Radio2_nonface
+
+Radio3_nonface <- alldata_NF[which(as.character(alldata_NF$target) == "Radio"), c("bas_tcthird")]
+alldata_NF$successfulcues_BAS[which(as.character(alldata_NF$target) == "Radio")] <- Radio3_nonface
+Radio3_nonface
+
+Radio4_nonface <- alldata_NF[which(as.character(alldata_NF$target) == "Radio"), c("bas_tcfourth")]
+alldata_NF$successfulcues_BAS[which(as.character(alldata_NF$target) == "Radio")] <- Radio4_nonface
+Radio4_nonface
+
+Radio5_nonface <- alldata_NF[which(as.character(alldata_NF$target) == "Radio"), c("bas_tcfifth")]
+alldata_NF$successfulcues_BAS[which(as.character(alldata_NF$target) == "Radio")] <- Radio5_nonface
+Radio5_nonface
+
+
+#nonface
+#Axt 
+Axt1_nonface <- alldata_NF[which(as.character(alldata_NF$target) == "Axt"), c("bas_tcfirst")]
+alldata_NF$successfulcues_BAS[which(as.character(alldata_NF$target) == "Axt")] <- Axt1_nonface
+Axt1_nonface
+
+Axt2_nonface <- alldata_NF[which(as.character(alldata_NF$target) == "Axt"), c("bas_tcsecond")]
+alldata_NF$successfulcues_BAS[which(as.character(alldata_NF$target) == "Axt")] <- Axt2_nonface
+Axt2_nonface
+
+Axt3_nonface <- alldata_NF[which(as.character(alldata_NF$target) == "Axt"), c("bas_tcthird")]
+alldata_NF$successfulcues_BAS[which(as.character(alldata_NF$target) == "Axt")] <- Axt3_nonface
+Axt3_nonface
+
+Axt4_nonface <- alldata_NF[which(as.character(alldata_NF$target) == "Axt"), c("bas_tcfourth")]
+alldata_NF$successfulcues_BAS[which(as.character(alldata_NF$target) == "Axt")] <- Axt4_nonface
+Axt4_nonface
+
+Axt5_nonface <- alldata_NF[which(as.character(alldata_NF$target) == "Axt"), c("bas_tcfifth")]
+alldata_NF$successfulcues_BAS[which(as.character(alldata_NF$target) == "Axt")] <- Axt5_nonface
+Axt5_nonface
+
+#nonface
+#Butter 
+Butter1_nonface <- alldata_NF[which(as.character(alldata_NF$target) == "Butter"), c("bas_tcfirst")]
+alldata_NF$successfulcues_BAS[which(as.character(alldata_NF$target) == "Butter")] <- Butter1_nonface
+Butter1_nonface
+
+Butter2_nonface <- alldata_NF[which(as.character(alldata_NF$target) == "Butter"), c("bas_tcsecond")]
+alldata_NF$successfulcues_BAS[which(as.character(alldata_NF$target) == "Butter")] <- Butter2_nonface
+Butter2_nonface
+
+Butter3_nonface <- alldata_NF[which(as.character(alldata_NF$target) == "Butter"), c("bas_tcthird")]
+alldata_NF$successfulcues_BAS[which(as.character(alldata_NF$target) == "Butter")] <- Butter3_nonface
+Butter3_nonface
+
+Butter4_nonface <- alldata_NF[which(as.character(alldata_NF$target) == "Butter"), c("bas_tcfourth")]
+alldata_NF$successfulcues_BAS[which(as.character(alldata_NF$target) == "Butter")] <- Butter4_nonface
+Butter4_nonface
+
+Butter5_nonface <- alldata_NF[which(as.character(alldata_NF$target) == "Butter"), c("bas_tcfifth")]
+alldata_NF$successfulcues_BAS[which(as.character(alldata_NF$target) == "Butter")] <- Butter5_nonface
+Butter5_nonface
+
+
+#nonface
+#Rüstung 
+Rüstung1_nonface <- alldata_NF[which(as.character(alldata_NF$target) == "Rüstung"), c("bas_tcfirst")]
+alldata_NF$successfulcues_BAS[which(as.character(alldata_NF$target) == "Rüstung")] <- Rüstung1_nonface
+Rüstung1_nonface
+
+Rüstung2_nonface <- alldata_NF[which(as.character(alldata_NF$target) == "Rüstung"), c("bas_tcsecond")]
+alldata_NF$successfulcues_BAS[which(as.character(alldata_NF$target) == "Rüstung")] <- Rüstung2_nonface
+Rüstung2_nonface
+
+Rüstung3_nonface <- alldata_NF[which(as.character(alldata_NF$target) == "Rüstung"), c("bas_tcthird")]
+alldata_NF$successfulcues_BAS[which(as.character(alldata_NF$target) == "Rüstung")] <- Rüstung3_nonface
+Rüstung3_nonface
+
+Rüstung4_nonface <- alldata_NF[which(as.character(alldata_NF$target) == "Rüstung"), c("bas_tcfourth")]
+alldata_NF$successfulcues_BAS[which(as.character(alldata_NF$target) == "Rüstung")] <- Rüstung4_nonface
+Rüstung4_nonface
+
+Rüstung5_nonface <- alldata_NF[which(as.character(alldata_NF$target) == "Rüstung"), c("bas_tcfifth")]
+alldata_NF$successfulcues_BAS[which(as.character(alldata_NF$target) == "Rüstung")] <- Rüstung5_nonface
+Rüstung5_nonface
+
+
+
+#nonface
+#Hammer 
+Hammer1_nonface <- alldata_NF[which(as.character(alldata_NF$target) == "Hammer"), c("bas_tcfirst")]
+alldata_NF$successfulcues_BAS[which(as.character(alldata_NF$target) == "Hammer")] <- Hammer1_nonface
+Hammer1_nonface
+
+Hammer2_nonface <- alldata_NF[which(as.character(alldata_NF$target) == "Hammer"), c("bas_tcsecond")]
+alldata_NF$successfulcues_BAS[which(as.character(alldata_NF$target) == "Hammer")] <- Hammer2_nonface
+Hammer2_nonface
+
+Hammer3_nonface <- alldata_NF[which(as.character(alldata_NF$target) == "Hammer"), c("bas_tcthird")]
+alldata_NF$successfulcues_BAS[which(as.character(alldata_NF$target) == "Hammer")] <- Hammer3_nonface
+Hammer3_nonface
+
+Hammer4_nonface <- alldata_NF[which(as.character(alldata_NF$target) == "Hammer"), c("bas_tcfourth")]
+alldata_NF$successfulcues_BAS[which(as.character(alldata_NF$target) == "Hammer")] <- Hammer4_nonface
+Hammer4_nonface
+
+Hammer5_nonface <- alldata_NF[which(as.character(alldata_NF$target) == "Hammer"), c("bas_tcfifth")]
+alldata_NF$successfulcues_BAS[which(as.character(alldata_NF$target) == "Hammer")] <- Hammer5_nonface
+Hammer5_nonface
+
+
+#nonface
+#Lehrerin 
+Lehrerin1_nonface <- alldata_NF[which(as.character(alldata_NF$target) == "Lehrerin"), c("bas_tcfirst")]
+alldata_NF$successfulcues_BAS[which(as.character(alldata_NF$target) == "Lehrerin")] <- Lehrerin1_nonface
+Lehrerin1_nonface
+
+Lehrerin2_nonface <- alldata_NF[which(as.character(alldata_NF$target) == "Lehrerin"), c("bas_tcsecond")]
+alldata_NF$successfulcues_BAS[which(as.character(alldata_NF$target) == "Lehrerin")] <- Lehrerin2_nonface
+Lehrerin2_nonface
+
+Lehrerin3_nonface <- alldata_NF[which(as.character(alldata_NF$target) == "Lehrerin"), c("bas_tcthird")]
+alldata_NF$successfulcues_BAS[which(as.character(alldata_NF$target) == "Lehrerin")] <- Lehrerin3_nonface
+Lehrerin3_nonface
+
+Lehrerin4_nonface <- alldata_NF[which(as.character(alldata_NF$target) == "Lehrerin"), c("bas_tcfourth")]
+alldata_NF$successfulcues_BAS[which(as.character(alldata_NF$target) == "Lehrerin")] <- Lehrerin4_nonface
+Lehrerin4_nonface
+
+Lehrerin5_nonface <- alldata_NF[which(as.character(alldata_NF$target) == "Lehrerin"), c("bas_tcfifth")]
+alldata_NF$successfulcues_BAS[which(as.character(alldata_NF$target) == "Lehrerin")] <- Lehrerin5_nonface
+Lehrerin5_nonface
+
+#nonface
+#Mauer
+
+Mauer1_nonface <- alldata_NF[which(as.character(alldata_NF$target) == "Mauer"), c("bas_tcfirst")]
+alldata_NF$successfulcues_BAS[which(as.character(alldata_NF$target) == "Mauer")] <- Mauer1_nonface
+Mauer1_nonface
+
+Mauer2_nonface <- alldata_NF[which(as.character(alldata_NF$target) == "Mauer"), c("bas_tcsecond")]
+alldata_NF$successfulcues_BAS[which(as.character(alldata_NF$target) == "Mauer")] <- Mauer2_nonface
+Mauer2_nonface
+
+Mauer3_nonface <- alldata_NF[which(as.character(alldata_NF$target) == "Mauer"), c("bas_tcthird")]
+alldata_NF$successfulcues_BAS[which(as.character(alldata_NF$target) == "Mauer")] <- Mauer3_nonface
+Mauer3_nonface
+
+Mauer4_nonface <- alldata_NF[which(as.character(alldata_NF$target) == "Mauer"), c("bas_tcfourth")]
+alldata_NF$successfulcues_BAS[which(as.character(alldata_NF$target) == "Mauer")] <- Mauer4_nonface
+Mauer4_nonface
+
+Mauer5_nonface <- alldata_NF[which(as.character(alldata_NF$target) == "Mauer"), c("bas_tcfifth")]
+alldata_NF$successfulcues_BAS[which(as.character(alldata_NF$target) == "Mauer")] <- Mauer5_nonface
+Mauer5_nonface
+
+#nonface
+#Knochen 
+Knochen1_nonface <- alldata_NF[which(as.character(alldata_NF$target) == "Knochen"), c("bas_tcfirst")]
+alldata_NF$successfulcues_BAS[which(as.character(alldata_NF$target) == "Knochen")] <- Knochen1_nonface
+Knochen1_nonface
+
+Knochen2_nonface <- alldata_NF[which(as.character(alldata_NF$target) == "Knochen"), c("bas_tcsecond")]
+alldata_NF$successfulcues_BAS[which(as.character(alldata_NF$target) == "Knochen")] <- Knochen2_nonface
+Knochen2_nonface
+
+Knochen3_nonface <- alldata_NF[which(as.character(alldata_NF$target) == "Knochen"), c("bas_tcthird")]
+alldata_NF$successfulcues_BAS[which(as.character(alldata_NF$target) == "Knochen")] <- Knochen3_nonface
+Knochen3_nonface
+
+Knochen4_nonface <- alldata_NF[which(as.character(alldata_NF$target) == "Knochen"), c("bas_tcfourth")]
+alldata_NF$successfulcues_BAS[which(as.character(alldata_NF$target) == "Knochen")] <- Knochen4_nonface
+Knochen4_nonface
+
+Knochen5_nonface <- alldata_NF[which(as.character(alldata_NF$target) == "Knochen"), c("bas_tcfifth")]
+alldata_NF$successfulcues_BAS[which(as.character(alldata_NF$target) == "Knochen")] <- Knochen5_nonface
+Knochen5_nonface
+
+
+#nonface
+#Pilz 
+Pilz1_nonface <- alldata_NF[which(as.character(alldata_NF$target) == "Pilz"), c("bas_tcfirst")]
+alldata_NF$successfulcues_BAS[which(as.character(alldata_NF$target) == "Pilz")] <- Pilz1_nonface
+Pilz1_nonface
+
+Pilz2_nonface <- alldata_NF[which(as.character(alldata_NF$target) == "Pilz"), c("bas_tcsecond")]
+alldata_NF$successfulcues_BAS[which(as.character(alldata_NF$target) == "Pilz")] <- Pilz2_nonface
+Pilz2_nonface
+
+Pilz3_nonface <- alldata_NF[which(as.character(alldata_NF$target) == "Pilz"), c("bas_tcthird")]
+alldata_NF$successfulcues_BAS[which(as.character(alldata_NF$target) == "Pilz")] <- Pilz3_nonface
+Pilz3_nonface
+
+Pilz4_nonface <- alldata_NF[which(as.character(alldata_NF$target) == "Pilz"), c("bas_tcfourth")]
+alldata_NF$successfulcues_BAS[which(as.character(alldata_NF$target) == "Pilz")] <- Pilz4_nonface
+Pilz4_nonface
+
+Pilz5_nonface <- alldata_NF[which(as.character(alldata_NF$target) == "Pilz"), c("bas_tcfifth")]
+alldata_NF$successfulcues_BAS[which(as.character(alldata_NF$target) == "Pilz")] <- Pilz5_nonface
+Pilz5_nonface
+
+#nonface
+#Brücke 
+Brücke1_nonface <- alldata_NF[which(as.character(alldata_NF$target) == "Brücke"), c("bas_tcfirst")]
+alldata_NF$successfulcues_BAS[which(as.character(alldata_NF$target) == "Brücke")] <- Brücke1_nonface
+Brücke1_nonface
+
+Brücke2_nonface <- alldata_NF[which(as.character(alldata_NF$target) == "Brücke"), c("bas_tcsecond")]
+alldata_NF$successfulcues_BAS[which(as.character(alldata_NF$target) == "Brücke")] <- Brücke2_nonface
+Brücke2_nonface
+
+Brücke3_nonface <- alldata_NF[which(as.character(alldata_NF$target) == "Brücke"), c("bas_tcthird")]
+alldata_NF$successfulcues_BAS[which(as.character(alldata_NF$target) == "Brücke")] <- Brücke3_nonface
+Brücke3_nonface
+
+Brücke4_nonface <- alldata_NF[which(as.character(alldata_NF$target) == "Brücke"), c("bas_tcfourth")]
+alldata_NF$successfulcues_BAS[which(as.character(alldata_NF$target) == "Brücke")] <- Brücke4_nonface
+Brücke4_nonface
+
+Brücke5_nonface <- alldata_NF[which(as.character(alldata_NF$target) == "Brücke"), c("bas_tcfifth")]
+alldata_NF$successfulcues_BAS[which(as.character(alldata_NF$target) == "Brücke")] <- Brücke5_nonface
+Brücke5_nonface
+
+```
+
+
+```{r}
+
+x<-c(
+coordination_score_vector_face[1], #try1face
+coordination_score_vector_face[2],
+coordination_score_vector_face[3],
+coordination_score_vector_face[4],
+coordination_score_vector_face[5],
+coordination_score_vector_face[6],
+coordination_score_vector_face[7],
+coordination_score_vector_face[8],
+coordination_score_vector_face[9],
+coordination_score_vector_face[10],
+coordination_score_vector_face[11] ,#try1face
+coordination_score_vector_face[12],
+coordination_score_vector_face[13],
+coordination_score_vector_face[14],
+coordination_score_vector_face[15],
+coordination_score_vector_face[16],
+coordination_score_vector_face[17],
+coordination_score_vector_face[18],
+coordination_score_vector_face[19],
+coordination_score_vector_face[20],
+coordination_score_vector_face[21],#try1face
+coordination_score_vector_face[22],
+coordination_score_vector_face[23],
+coordination_score_vector_face[24],
+coordination_score_vector_face[25],
+coordination_score_vector_face[26],
+coordination_score_vector_face[27],
+coordination_score_vector_face[28],
+coordination_score_vector_face[29],
+coordination_score_vector_face[30],
+coordination_score_vector_face[31],#try1face
+coordination_score_vector_face[32],
+coordination_score_vector_face[33],
+coordination_score_vector_face[34],
+coordination_score_vector_face[35],
+coordination_score_vector_face[36],
+coordination_score_vector_face[37],
+coordination_score_vector_face[38],
+coordination_score_vector_face[39],
+coordination_score_vector_face[40],
+  
+  
+coordination_score_vector_nonface[1], #try1nonface
+coordination_score_vector_nonface[2],
+coordination_score_vector_nonface[3],
+coordination_score_vector_nonface[4],
+coordination_score_vector_nonface[5],
+coordination_score_vector_nonface[6],
+coordination_score_vector_nonface[7],
+coordination_score_vector_nonface[8],
+coordination_score_vector_nonface[9],
+coordination_score_vector_nonface[10],
+coordination_score_vector_nonface[11] ,#try1nonface
+coordination_score_vector_nonface[12],
+coordination_score_vector_nonface[13],
+coordination_score_vector_nonface[14],
+coordination_score_vector_nonface[15],
+coordination_score_vector_nonface[16],
+coordination_score_vector_nonface[17],
+coordination_score_vector_nonface[18],
+coordination_score_vector_nonface[19],
+coordination_score_vector_nonface[20],
+coordination_score_vector_nonface[21],#try1nonface
+coordination_score_vector_nonface[22],
+coordination_score_vector_nonface[23],
+coordination_score_vector_nonface[24],
+coordination_score_vector_nonface[25],
+coordination_score_vector_nonface[26],
+coordination_score_vector_nonface[27],
+coordination_score_vector_nonface[28],
+coordination_score_vector_nonface[29],
+coordination_score_vector_nonface[30],
+coordination_score_vector_nonface[31],#try1nonface
+coordination_score_vector_nonface[32],
+coordination_score_vector_nonface[33],
+coordination_score_vector_nonface[34],
+coordination_score_vector_nonface[35],
+coordination_score_vector_nonface[36],
+coordination_score_vector_nonface[37],
+coordination_score_vector_nonface[38],
+coordination_score_vector_nonface[39],
+coordination_score_vector_nonface[40],
+
+
+
+coordination_score_vector_face2[1], #try1face
+coordination_score_vector_face2[2],
+coordination_score_vector_face2[3],
+coordination_score_vector_face2[4],
+coordination_score_vector_face2[5],
+coordination_score_vector_face2[6],
+coordination_score_vector_face2[7],
+coordination_score_vector_face2[8],
+coordination_score_vector_face2[9],
+coordination_score_vector_face2[10],
+coordination_score_vector_face2[11] ,#try1face
+coordination_score_vector_face2[12],
+coordination_score_vector_face2[13],
+coordination_score_vector_face2[14],
+coordination_score_vector_face2[15],
+coordination_score_vector_face2[16],
+coordination_score_vector_face2[17],
+coordination_score_vector_face2[18],
+coordination_score_vector_face2[19],
+coordination_score_vector_face2[20],
+coordination_score_vector_face2[21],#try1face
+coordination_score_vector_face2[22],
+coordination_score_vector_face2[23],
+coordination_score_vector_face2[24],
+coordination_score_vector_face2[25],
+coordination_score_vector_face2[26],
+coordination_score_vector_face2[27],
+coordination_score_vector_face2[28],
+coordination_score_vector_face2[29],
+coordination_score_vector_face2[30],
+coordination_score_vector_face2[31],#try1face
+coordination_score_vector_face2[32],
+coordination_score_vector_face2[33],
+coordination_score_vector_face2[34],
+coordination_score_vector_face2[35],
+coordination_score_vector_face2[36],
+coordination_score_vector_face2[37],
+coordination_score_vector_face2[38],
+coordination_score_vector_face2[39],
+coordination_score_vector_face2[40],
+
+coordination_score_vector_nonface2[1], #try1face
+coordination_score_vector_nonface2[2],
+coordination_score_vector_nonface2[3],
+coordination_score_vector_nonface2[4],
+coordination_score_vector_nonface2[5],
+coordination_score_vector_nonface2[6],
+coordination_score_vector_nonface2[7],
+coordination_score_vector_nonface2[8],
+coordination_score_vector_nonface2[9],
+coordination_score_vector_nonface2[10],
+coordination_score_vector_nonface2[11] ,#try1face
+coordination_score_vector_nonface2[12],
+coordination_score_vector_nonface2[13],
+coordination_score_vector_nonface2[14],
+coordination_score_vector_nonface2[15],
+coordination_score_vector_nonface2[16],
+coordination_score_vector_nonface2[17],
+coordination_score_vector_nonface2[18],
+coordination_score_vector_nonface2[19],
+coordination_score_vector_nonface2[20],
+coordination_score_vector_nonface2[21],#try1face
+coordination_score_vector_nonface2[22],
+coordination_score_vector_nonface2[23],
+coordination_score_vector_nonface2[24],
+coordination_score_vector_nonface2[25],
+coordination_score_vector_nonface2[26],
+coordination_score_vector_nonface2[27],
+coordination_score_vector_nonface2[28],
+coordination_score_vector_nonface2[29],
+coordination_score_vector_nonface2[30],
+coordination_score_vector_nonface2[31],#try1face
+coordination_score_vector_nonface2[32],
+coordination_score_vector_nonface2[33],
+coordination_score_vector_nonface2[34],
+coordination_score_vector_nonface2[35],
+coordination_score_vector_nonface2[36],
+coordination_score_vector_nonface2[37],
+coordination_score_vector_nonface2[38],
+coordination_score_vector_nonface2[39],
+coordination_score_vector_nonface2[40],
+
+
+coordination_score_vector_face3[1], #try1face
+coordination_score_vector_face3[2],
+coordination_score_vector_face3[3],
+coordination_score_vector_face3[4],
+coordination_score_vector_face3[5],
+coordination_score_vector_face3[6],
+coordination_score_vector_face3[7],
+coordination_score_vector_face3[8],
+coordination_score_vector_face3[9],
+coordination_score_vector_face3[10],
+coordination_score_vector_face3[11] ,#try1face
+coordination_score_vector_face3[12],
+coordination_score_vector_face3[13],
+coordination_score_vector_face3[14],
+coordination_score_vector_face3[15],
+coordination_score_vector_face3[16],
+coordination_score_vector_face3[17],
+coordination_score_vector_face3[18],
+coordination_score_vector_face3[19],
+coordination_score_vector_face3[20],
+coordination_score_vector_face3[21],#try1face
+coordination_score_vector_face3[22],
+coordination_score_vector_face3[23],
+coordination_score_vector_face3[24],
+coordination_score_vector_face3[25],
+coordination_score_vector_face3[26],
+coordination_score_vector_face3[27],
+coordination_score_vector_face3[28],
+coordination_score_vector_face3[29],
+coordination_score_vector_face3[30],
+coordination_score_vector_face3[31],#try1face
+coordination_score_vector_face3[32],
+coordination_score_vector_face3[33],
+coordination_score_vector_face3[34],
+coordination_score_vector_face3[35],
+coordination_score_vector_face3[36],
+coordination_score_vector_face3[37],
+coordination_score_vector_face3[38],
+coordination_score_vector_face3[39],
+coordination_score_vector_face3[40],
+
+
+coordination_score_vector_nonface3[1], #try1face
+coordination_score_vector_nonface3[2],
+coordination_score_vector_nonface3[3],
+coordination_score_vector_nonface3[4],
+coordination_score_vector_nonface3[5],
+coordination_score_vector_nonface3[6],
+coordination_score_vector_nonface3[7],
+coordination_score_vector_nonface3[8],
+coordination_score_vector_nonface3[9],
+coordination_score_vector_nonface3[10],
+coordination_score_vector_nonface3[11] ,#try1face
+coordination_score_vector_nonface3[12],
+coordination_score_vector_nonface3[13],
+coordination_score_vector_nonface3[14],
+coordination_score_vector_nonface3[15],
+coordination_score_vector_nonface3[16],
+coordination_score_vector_nonface3[17],
+coordination_score_vector_nonface3[18],
+coordination_score_vector_nonface3[19],
+coordination_score_vector_nonface3[20],
+coordination_score_vector_nonface3[21],#try1face
+coordination_score_vector_nonface3[22],
+coordination_score_vector_nonface3[23],
+coordination_score_vector_nonface3[24],
+coordination_score_vector_nonface3[25],
+coordination_score_vector_nonface3[26],
+coordination_score_vector_nonface3[27],
+coordination_score_vector_nonface3[28],
+coordination_score_vector_nonface3[29],
+coordination_score_vector_nonface3[30],
+coordination_score_vector_nonface3[31],#try1face
+coordination_score_vector_nonface3[32],
+coordination_score_vector_nonface3[33],
+coordination_score_vector_nonface3[34],
+coordination_score_vector_nonface3[35],
+coordination_score_vector_nonface3[36],
+coordination_score_vector_nonface3[37],
+coordination_score_vector_nonface3[38],
+coordination_score_vector_nonface3[39],
+coordination_score_vector_nonface3[40],
+
+coordination_score_vector_face4[1], #try1face
+coordination_score_vector_face4[2],
+coordination_score_vector_face4[3],
+coordination_score_vector_face4[4],
+coordination_score_vector_face4[5],
+coordination_score_vector_face4[6],
+coordination_score_vector_face4[7],
+coordination_score_vector_face4[8],
+coordination_score_vector_face4[9],
+coordination_score_vector_face4[10],
+coordination_score_vector_face4[11],#try1face
+coordination_score_vector_face4[12],
+coordination_score_vector_face4[13],
+coordination_score_vector_face4[14],
+coordination_score_vector_face4[15],
+coordination_score_vector_face4[16],
+coordination_score_vector_face4[17],
+coordination_score_vector_face4[18],
+coordination_score_vector_face4[19],
+coordination_score_vector_face4[20],
+coordination_score_vector_face4[21],#try1face
+coordination_score_vector_face4[22],
+coordination_score_vector_face4[23],
+coordination_score_vector_face4[24],
+coordination_score_vector_face4[25],
+coordination_score_vector_face4[26],
+coordination_score_vector_face4[27],
+coordination_score_vector_face4[28],
+coordination_score_vector_face4[29],
+coordination_score_vector_face4[30],
+coordination_score_vector_face4[31],#try1face
+coordination_score_vector_face4[32],
+coordination_score_vector_face4[33],
+coordination_score_vector_face4[34],
+coordination_score_vector_face4[35],
+coordination_score_vector_face4[36],
+coordination_score_vector_face4[37],
+coordination_score_vector_face4[38],
+coordination_score_vector_face4[39],
+coordination_score_vector_face4[40],
+
+
+coordination_score_vector_nonface4[1], #try1face
+coordination_score_vector_nonface4[2],
+coordination_score_vector_nonface4[3],
+coordination_score_vector_nonface4[4],
+coordination_score_vector_nonface4[5],
+coordination_score_vector_nonface4[6],
+coordination_score_vector_nonface4[7],
+coordination_score_vector_nonface4[8],
+coordination_score_vector_nonface4[9],
+coordination_score_vector_nonface4[10],
+coordination_score_vector_nonface4[11] ,#try1face
+coordination_score_vector_nonface4[12],
+coordination_score_vector_nonface4[13],
+coordination_score_vector_nonface4[14],
+coordination_score_vector_nonface4[15],
+coordination_score_vector_nonface4[16],
+coordination_score_vector_nonface4[17],
+coordination_score_vector_nonface4[18],
+coordination_score_vector_nonface4[19],
+coordination_score_vector_nonface4[20],
+coordination_score_vector_nonface4[21],#try1face
+coordination_score_vector_nonface4[22],
+coordination_score_vector_nonface4[23],
+coordination_score_vector_nonface4[24],
+coordination_score_vector_nonface4[25],
+coordination_score_vector_nonface4[26],
+coordination_score_vector_nonface4[27],
+coordination_score_vector_nonface4[28],
+coordination_score_vector_nonface4[29],
+coordination_score_vector_nonface4[30],
+coordination_score_vector_nonface4[31],#try1face
+coordination_score_vector_nonface4[32],
+coordination_score_vector_nonface4[33],
+coordination_score_vector_nonface4[34],
+coordination_score_vector_nonface4[35],
+coordination_score_vector_nonface4[36],
+coordination_score_vector_nonface4[37],
+coordination_score_vector_nonface4[38],
+coordination_score_vector_nonface4[39],
+coordination_score_vector_nonface4[40],
+
+
+coordination_score_vector_face5[1], #try1face
+coordination_score_vector_face5[2],
+coordination_score_vector_face5[3],
+coordination_score_vector_face5[4],
+coordination_score_vector_face5[5],
+coordination_score_vector_face5[6],
+coordination_score_vector_face5[7],
+coordination_score_vector_face5[8],
+coordination_score_vector_face5[9],
+coordination_score_vector_face5[10],
+coordination_score_vector_face5[11],#try1face
+coordination_score_vector_face5[12],
+coordination_score_vector_face5[13],
+coordination_score_vector_face5[14],
+coordination_score_vector_face5[15],
+coordination_score_vector_face5[16],
+coordination_score_vector_face5[17],
+coordination_score_vector_face5[18],
+coordination_score_vector_face5[19],
+coordination_score_vector_face5[20],
+coordination_score_vector_face5[21],#try1face
+coordination_score_vector_face5[22],
+coordination_score_vector_face5[23],
+coordination_score_vector_face5[24],
+coordination_score_vector_face5[25],
+coordination_score_vector_face5[26],
+coordination_score_vector_face5[27],
+coordination_score_vector_face5[28],
+coordination_score_vector_face5[29],
+coordination_score_vector_face5[30],
+coordination_score_vector_face5[31],#try1face
+coordination_score_vector_face5[32],
+coordination_score_vector_face5[33],
+coordination_score_vector_face5[34],
+coordination_score_vector_face5[35],
+coordination_score_vector_face5[36],
+coordination_score_vector_face5[37],
+coordination_score_vector_face5[38],
+coordination_score_vector_face5[39],
+coordination_score_vector_face5[40],
+
+
+coordination_score_vector_nonface5[1], #try1face
+coordination_score_vector_nonface5[2],
+coordination_score_vector_nonface5[3],
+coordination_score_vector_nonface5[4],
+coordination_score_vector_nonface5[5],
+coordination_score_vector_nonface5[6],
+coordination_score_vector_nonface5[7],
+coordination_score_vector_nonface5[8],
+coordination_score_vector_nonface5[9],
+coordination_score_vector_nonface5[10],
+coordination_score_vector_nonface5[11] ,#try1face
+coordination_score_vector_nonface5[12],
+coordination_score_vector_nonface5[13],
+coordination_score_vector_nonface5[14],
+coordination_score_vector_nonface5[15],
+coordination_score_vector_nonface5[16],
+coordination_score_vector_nonface5[17],
+coordination_score_vector_nonface5[18],
+coordination_score_vector_nonface5[19],
+coordination_score_vector_nonface5[20],
+coordination_score_vector_nonface5[21],#try1face
+coordination_score_vector_nonface5[22],
+coordination_score_vector_nonface5[23],
+coordination_score_vector_nonface5[24],
+coordination_score_vector_nonface5[25],
+coordination_score_vector_nonface5[26],
+coordination_score_vector_nonface5[27],
+coordination_score_vector_nonface5[28],
+coordination_score_vector_nonface5[29],
+coordination_score_vector_nonface5[30],
+coordination_score_vector_nonface5[31],#try1face
+coordination_score_vector_nonface5[32],
+coordination_score_vector_nonface5[33],
+coordination_score_vector_nonface5[34],
+coordination_score_vector_nonface5[35],
+coordination_score_vector_nonface5[36],
+coordination_score_vector_nonface5[37],
+coordination_score_vector_nonface5[38],
+coordination_score_vector_nonface5[39],
+coordination_score_vector_nonface5[40]
+
+)
+
+
+
+y<-c(
+median(brewery1_face, na.rm=T),
+median(brewery1_face, na.rm=T),
+median(sill1_face, na.rm=T),
+median(cob1_face, na.rm=T),
+median(retina1_face,na.rm=T),
+median(loaf1_face,na.rm=T),
+median(grater1_face,na.rm=T),
+median(yolk1_face,na.rm=T),
+median(steed1_face,na.rm=T),
+median(cod1_face,na.rm=T),
+median(pepperoni1_face,na.rm=T),
+median(crossword1_face,nar.rm=T),
+median(blaze1_face,nar.rm=T),
+median(affection1_face,nar.rm=T),
+median(crescent1_face,nar.rm=T),
+median(occupation1_face,nar.rm=T),
+median(bouquet1_face,nar.rm=T),
+median(acquaintance1_face,nar.rm=T),
+median(bulb1_face,nar.rm=T),
+median(butcher1_face,nar.rm=T),
+median(Krone1_face,nar.rm=T),
+median(Hafen1_face,nar.rm=T),
+median(Brunnen1_face,nar.rm=T),
+median(Kamm1_face,nar.rm=T),
+median(Dach1_face,nar.rm=T),
+median(Lilie1_face,nar.rm=T),
+median(Paddel1_face,nar.rm=T),
+median(Gebiss1_face,nar.rm=T),
+median(Feder1_face,nar.rm=T),
+median(Schirm1_face, nar.rm=T),
+median(Radio1_face, nar.rm=T),
+median(Axt1_face, nar.rm=T),
+median(Butter1_face, nar.rm=T),
+median(Rüstung1_face, nar.rm=T),
+median(Hammer1_face, nar.rm=T),
+median(Lehrerin1_face, nar.rm=T),
+median(Mauer1_face, nar.rm=T),
+median(Knochen1_face, nar.rm=T),
+median(Pilz1_face, nar.rm=T),
+median(Brücke1_face,nar.rm=T),
+
+median(brewery1_nonface, na.rm=T),
+median(brewery1_nonface, na.rm=T),
+median(sill1_nonface, na.rm=T),
+median(cob1_nonface, na.rm=T),
+median(retina1_nonface,na.rm=T),
+median(loaf1_nonface,na.rm=T),
+median(grater1_nonface,na.rm=T),
+median(yolk1_nonface,na.rm=T),
+median(steed1_nonface,na.rm=T),
+median(cod1_nonface,na.rm=T),
+median(pepperoni1_nonface,na.rm=T),
+median(crossword1_nonface,nar.rm=T),
+median(blaze1_nonface,nar.rm=T),
+median(affection1_nonface,nar.rm=T),
+median(crescent1_nonface,nar.rm=T),
+median(occupation1_nonface,nar.rm=T),
+median(bouquet1_nonface,nar.rm=T),
+median(acquaintance1_nonface,nar.rm=T),
+median(bulb1_nonface,nar.rm=T),
+median(butcher1_nonface,nar.rm=T),
+median(Krone1_nonface,nar.rm=T),
+median(Hafen1_nonface,nar.rm=T),
+median(Brunnen1_nonface,nar.rm=T),
+median(Kamm1_nonface,nar.rm=T),
+median(Dach1_nonface,nar.rm=T),
+median(Lilie1_nonface,nar.rm=T),
+median(Paddel1_nonface,nar.rm=T),
+median(Gebiss1_nonface,nar.rm=T),
+median(Feder1_nonface,nar.rm=T),
+median(Schirm1_nonface, nar.rm=T),
+median(Radio1_nonface, nar.rm=T),
+median(Axt1_nonface, nar.rm=T),
+median(Butter1_nonface, nar.rm=T),
+median(Rüstung1_nonface, nar.rm=T),
+median(Hammer1_nonface, nar.rm=T),
+median(Lehrerin1_nonface, nar.rm=T),
+median(Mauer1_nonface, nar.rm=T),
+median(Knochen1_nonface, nar.rm=T),
+median(Pilz1_nonface, nar.rm=T),
+median(Brücke1_nonface,nar.rm=T),
+
+
+median(brewery2_face, na.rm=T),
+median(brewery2_face, na.rm=T),
+median(sill2_face, na.rm=T),
+median(cob2_face, na.rm=T),
+median(retina2_face,na.rm=T),
+median(loaf2_face,na.rm=T),
+median(grater2_face,na.rm=T),
+median(yolk2_face,na.rm=T),
+median(steed2_face,na.rm=T),
+median(cod2_face,na.rm=T),
+median(pepperoni2_face,na.rm=T),
+median(crossword2_face,nar.rm=T),
+median(blaze2_face,nar.rm=T),
+median(affection2_face,nar.rm=T),
+median(crescent2_face,nar.rm=T),
+median(occupation2_face,nar.rm=T),
+median(bouquet2_face,nar.rm=T),
+median(acquaintance2_face,nar.rm=T),
+median(bulb2_face,nar.rm=T),
+median(butcher2_face,nar.rm=T),
+median(Krone2_face,nar.rm=T),
+median(Hafen2_face,nar.rm=T),
+median(Brunnen2_face,nar.rm=T),
+median(Kamm2_face,nar.rm=T),
+median(Dach2_face,nar.rm=T),
+median(Lilie2_face,nar.rm=T),
+median(Paddel2_face,nar.rm=T),
+median(Gebiss2_face,nar.rm=T),
+median(Feder2_face,nar.rm=T),
+median(Schirm2_face, nar.rm=T),
+median(Radio2_face, nar.rm=T),
+median(Axt2_face, nar.rm=T),
+median(Butter2_face, nar.rm=T),
+median(Rüstung2_face, nar.rm=T),
+median(Hammer2_face, nar.rm=T),
+median(Lehrerin2_face, nar.rm=T),
+median(Mauer2_face, nar.rm=T),
+median(Knochen2_face, nar.rm=T),
+median(Pilz2_face, nar.rm=T),
+median(Brücke2_face,nar.rm=T),
+
+
+
+
+median(brewery2_nonface, na.rm=T),
+median(brewery2_nonface, na.rm=T),
+median(sill2_nonface, na.rm=T),
+median(cob2_nonface, na.rm=T),
+median(retina2_nonface,na.rm=T),
+median(loaf2_nonface,na.rm=T),
+median(grater2_nonface,na.rm=T),
+median(yolk2_nonface,na.rm=T),
+median(steed2_nonface,na.rm=T),
+median(cod2_nonface,na.rm=T),
+median(pepperoni2_nonface,na.rm=T),
+median(crossword2_nonface,nar.rm=T),
+median(blaze2_nonface,nar.rm=T),
+median(affection2_nonface,nar.rm=T),
+median(crescent2_nonface,nar.rm=T),
+median(occupation2_nonface,nar.rm=T),
+median(bouquet2_nonface,nar.rm=T),
+median(acquaintance2_nonface,nar.rm=T),
+median(bulb2_nonface,nar.rm=T),
+median(butcher2_nonface,nar.rm=T),
+median(Krone2_nonface,nar.rm=T),
+median(Hafen2_nonface,nar.rm=T),
+median(Brunnen2_nonface,nar.rm=T),
+median(Kamm2_nonface,nar.rm=T),
+median(Dach2_nonface,nar.rm=T),
+median(Lilie2_nonface,nar.rm=T),
+median(Paddel2_nonface,nar.rm=T),
+median(Gebiss2_nonface,nar.rm=T),
+median(Feder2_nonface,nar.rm=T),
+median(Schirm2_nonface, nar.rm=T),
+median(Radio2_nonface, nar.rm=T),
+median(Axt2_nonface, nar.rm=T),
+median(Butter2_nonface, nar.rm=T),
+median(Rüstung2_nonface, nar.rm=T),
+median(Hammer2_nonface, nar.rm=T),
+median(Lehrerin2_nonface, nar.rm=T),
+median(Mauer2_nonface, nar.rm=T),
+median(Knochen2_nonface, nar.rm=T),
+median(Pilz2_nonface, nar.rm=T),
+median(Brücke2_nonface,nar.rm=T),
+
+
+median(brewery3_face, na.rm=T),
+median(brewery3_face, na.rm=T),
+median(sill3_face, na.rm=T),
+median(cob3_face, na.rm=T),
+median(retina3_face,na.rm=T),
+median(loaf3_face,na.rm=T),
+median(grater3_face,na.rm=T),
+median(yolk3_face,na.rm=T),
+median(steed3_face,na.rm=T),
+median(cod3_face,na.rm=T),
+median(pepperoni3_face,na.rm=T),
+median(crossword3_face,nar.rm=T),
+median(blaze3_face,nar.rm=T),
+median(affection3_face,nar.rm=T),
+median(crescent3_face,nar.rm=T),
+median(occupation3_face,nar.rm=T),
+median(bouquet3_face,nar.rm=T),
+median(acquaintance3_face,nar.rm=T),
+median(bulb3_face,nar.rm=T),
+median(butcher3_face,nar.rm=T),
+median(Krone3_face,nar.rm=T),
+median(Hafen3_face,nar.rm=T),
+median(Brunnen3_face,nar.rm=T),
+median(Kamm3_face,nar.rm=T),
+median(Dach3_face,nar.rm=T),
+median(Lilie3_face,nar.rm=T),
+median(Paddel3_face,nar.rm=T),
+median(Gebiss3_face,nar.rm=T),
+median(Feder3_face,nar.rm=T),
+median(Schirm3_face, nar.rm=T),
+median(Radio3_face, nar.rm=T),
+median(Axt3_face, nar.rm=T),
+median(Butter3_face, nar.rm=T),
+median(Rüstung3_face, nar.rm=T),
+median(Hammer3_face, nar.rm=T),
+median(Lehrerin3_face, nar.rm=T),
+median(Mauer3_face, nar.rm=T),
+median(Knochen3_face, nar.rm=T),
+median(Pilz3_face, nar.rm=T),
+median(Brücke3_face,nar.rm=T),
+
+
+median(brewery3_nonface, na.rm=T),
+median(brewery3_nonface, na.rm=T),
+median(sill3_nonface, na.rm=T),
+median(cob3_nonface, na.rm=T),
+median(retina3_nonface,na.rm=T),
+median(loaf3_nonface,na.rm=T),
+median(grater3_nonface,na.rm=T),
+median(yolk3_nonface,na.rm=T),
+median(steed3_nonface,na.rm=T),
+median(cod3_nonface,na.rm=T),
+median(pepperoni3_nonface,na.rm=T),
+median(crossword3_nonface,nar.rm=T),
+median(blaze3_nonface,nar.rm=T),
+median(affection3_nonface,nar.rm=T),
+median(crescent3_nonface,nar.rm=T),
+median(occupation3_nonface,nar.rm=T),
+median(bouquet3_nonface,nar.rm=T),
+median(acquaintance3_nonface,nar.rm=T),
+median(bulb3_nonface,nar.rm=T),
+median(butcher3_nonface,nar.rm=T),
+median(Krone3_nonface,nar.rm=T),
+median(Hafen3_nonface,nar.rm=T),
+median(Brunnen3_nonface,nar.rm=T),
+median(Kamm3_nonface,nar.rm=T),
+median(Dach3_nonface,nar.rm=T),
+median(Lilie3_nonface,nar.rm=T),
+median(Paddel3_nonface,nar.rm=T),
+median(Gebiss3_nonface,nar.rm=T),
+median(Feder3_nonface,nar.rm=T),
+median(Schirm3_nonface, nar.rm=T),
+median(Radio3_nonface, nar.rm=T),
+median(Axt3_nonface, nar.rm=T),
+median(Butter3_nonface, nar.rm=T),
+median(Rüstung3_nonface, nar.rm=T),
+median(Hammer3_nonface, nar.rm=T),
+median(Lehrerin3_nonface, nar.rm=T),
+median(Mauer3_nonface, nar.rm=T),
+median(Knochen3_nonface, nar.rm=T),
+median(Pilz3_nonface, nar.rm=T),
+median(Brücke3_nonface,nar.rm=T),
+
+
+
+median(brewery4_face, na.rm=T),
+median(brewery4_face, na.rm=T),
+median(sill4_face, na.rm=T),
+median(cob4_face, na.rm=T),
+median(retina4_face,na.rm=T),
+median(loaf4_face,na.rm=T),
+median(grater4_face,na.rm=T),
+median(yolk4_face,na.rm=T),
+median(steed4_face,na.rm=T),
+median(cod4_face,na.rm=T),
+median(pepperoni4_face,na.rm=T),
+median(crossword4_face,nar.rm=T),
+median(blaze4_face,nar.rm=T),
+median(affection4_face,nar.rm=T),
+median(crescent4_face,nar.rm=T),
+median(occupation4_face,nar.rm=T),
+median(bouquet4_face,nar.rm=T),
+median(acquaintance4_face,nar.rm=T),
+median(bulb4_face,nar.rm=T),
+median(butcher4_face,nar.rm=T),
+median(Krone4_face,nar.rm=T),
+median(Hafen4_face,nar.rm=T),
+median(Brunnen4_face,nar.rm=T),
+median(Kamm4_face,nar.rm=T),
+median(Dach4_face,nar.rm=T),
+median(Lilie4_face,nar.rm=T),
+median(Paddel4_face,nar.rm=T),
+median(Gebiss4_face,nar.rm=T),
+median(Feder4_face,nar.rm=T),
+median(Schirm4_face, nar.rm=T),
+median(Radio4_face, nar.rm=T),
+median(Axt4_face, nar.rm=T),
+median(Butter4_face, nar.rm=T),
+median(Rüstung4_face, nar.rm=T),
+median(Hammer4_face, nar.rm=T),
+median(Lehrerin4_face, nar.rm=T),
+median(Mauer4_face, nar.rm=T),
+median(Knochen4_face, nar.rm=T),
+median(Pilz4_face, nar.rm=T),
+median(Brücke4_face,nar.rm=T),
+
+
+median(brewery4_nonface, na.rm=T),
+median(brewery4_nonface, na.rm=T),
+median(sill4_nonface, na.rm=T),
+median(cob4_nonface, na.rm=T),
+median(retina4_nonface,na.rm=T),
+median(loaf4_nonface,na.rm=T),
+median(grater4_nonface,na.rm=T),
+median(yolk4_nonface,na.rm=T),
+median(steed4_nonface,na.rm=T),
+median(cod4_nonface,na.rm=T),
+median(pepperoni4_nonface,na.rm=T),
+median(crossword4_nonface,nar.rm=T),
+median(blaze4_nonface,nar.rm=T),
+median(affection4_nonface,nar.rm=T),
+median(crescent4_nonface,nar.rm=T),
+median(occupation4_nonface,nar.rm=T),
+median(bouquet4_nonface,nar.rm=T),
+median(acquaintance4_nonface,nar.rm=T),
+median(bulb4_nonface,nar.rm=T),
+median(butcher4_nonface,nar.rm=T),
+median(Krone4_nonface,nar.rm=T),
+median(Hafen4_nonface,nar.rm=T),
+median(Brunnen4_nonface,nar.rm=T),
+median(Kamm4_nonface,nar.rm=T),
+median(Dach4_nonface,nar.rm=T),
+median(Lilie4_nonface,nar.rm=T),
+median(Paddel4_nonface,nar.rm=T),
+median(Gebiss4_nonface,nar.rm=T),
+median(Feder4_nonface,nar.rm=T),
+median(Schirm4_nonface, nar.rm=T),
+median(Radio4_nonface, nar.rm=T),
+median(Axt4_nonface, nar.rm=T),
+median(Butter4_nonface, nar.rm=T),
+median(Rüstung4_nonface, nar.rm=T),
+median(Hammer4_nonface, nar.rm=T),
+median(Lehrerin4_nonface, nar.rm=T),
+median(Mauer4_nonface, nar.rm=T),
+median(Knochen4_nonface, nar.rm=T),
+median(Pilz4_nonface, nar.rm=T),
+median(Brücke4_nonface,nar.rm=T),
+
+
+median(brewery5_face, na.rm=T),
+median(brewery5_face, na.rm=T),
+median(sill5_face, na.rm=T),
+median(cob5_face, na.rm=T),
+median(retina5_face,na.rm=T),
+median(loaf5_face,na.rm=T),
+median(grater5_face,na.rm=T),
+median(yolk5_face,na.rm=T),
+median(steed5_face,na.rm=T),
+median(cod5_face,na.rm=T),
+median(pepperoni5_face,na.rm=T),
+median(crossword5_face,nar.rm=T),
+median(blaze5_face,nar.rm=T),
+median(affection5_face,nar.rm=T),
+median(crescent5_face,nar.rm=T),
+median(occupation5_face,nar.rm=T),
+median(bouquet5_face,nar.rm=T),
+median(acquaintance5_face,nar.rm=T),
+median(bulb5_face,nar.rm=T),
+median(butcher5_face,nar.rm=T),
+median(Krone5_face,nar.rm=T),
+median(Hafen5_face,nar.rm=T),
+median(Brunnen5_face,nar.rm=T),
+median(Kamm5_face,nar.rm=T),
+median(Dach5_face,nar.rm=T),
+median(Lilie5_face,nar.rm=T),
+median(Paddel5_face,nar.rm=T),
+median(Gebiss5_face,nar.rm=T),
+median(Feder5_face,nar.rm=T),
+median(Schirm5_face, nar.rm=T),
+median(Radio5_face, nar.rm=T),
+median(Axt5_face, nar.rm=T),
+median(Butter5_face, nar.rm=T),
+median(Rüstung5_face, nar.rm=T),
+median(Hammer5_face, nar.rm=T),
+median(Lehrerin5_face, nar.rm=T),
+median(Mauer5_face, nar.rm=T),
+median(Knochen5_face, nar.rm=T),
+median(Pilz5_face, nar.rm=T),
+median(Brücke5_face,nar.rm=T),
+
+
+median(brewery5_nonface, na.rm=T),
+median(brewery5_nonface, na.rm=T),
+median(sill5_nonface, na.rm=T),
+median(cob5_nonface, na.rm=T),
+median(retina5_nonface,na.rm=T),
+median(loaf5_nonface,na.rm=T),
+median(grater5_nonface,na.rm=T),
+median(yolk5_nonface,na.rm=T),
+median(steed5_nonface,na.rm=T),
+median(cod5_nonface,na.rm=T),
+median(pepperoni5_nonface,na.rm=T),
+median(crossword5_nonface,nar.rm=T),
+median(blaze5_nonface,nar.rm=T),
+median(affection5_nonface,nar.rm=T),
+median(crescent5_nonface,nar.rm=T),
+median(occupation5_nonface,nar.rm=T),
+median(bouquet5_nonface,nar.rm=T),
+median(acquaintance5_nonface,nar.rm=T),
+median(bulb5_nonface,nar.rm=T),
+median(butcher5_nonface,nar.rm=T),
+median(Krone5_nonface,nar.rm=T),
+median(Hafen5_nonface,nar.rm=T),
+median(Brunnen5_nonface,nar.rm=T),
+median(Kamm5_nonface,nar.rm=T),
+median(Dach5_nonface,nar.rm=T),
+median(Lilie5_nonface,nar.rm=T),
+median(Paddel5_nonface,nar.rm=T),
+median(Gebiss5_nonface,nar.rm=T),
+median(Feder5_nonface,nar.rm=T),
+median(Schirm5_nonface, nar.rm=T),
+median(Radio5_nonface, nar.rm=T),
+median(Axt5_nonface, nar.rm=T),
+median(Butter5_nonface, nar.rm=T),
+median(Rüstung5_nonface, nar.rm=T),
+median(Hammer5_nonface, nar.rm=T),
+median(Lehrerin5_nonface, nar.rm=T),
+median(Mauer5_nonface, nar.rm=T),
+median(Knochen5_nonface, nar.rm=T),
+median(Pilz5_nonface, nar.rm=T),
+median(Brücke5_nonface,nar.rm=T)
+
+)
+
+```
+
+
+#now the Pearson correlation
+```{r}
+#correlation
+cor.test(x, y, method=c("pearson"))
+
+
+table(is.na(x)) #F 360, T 40 #359
+table(is.na(y)) #F 23, T 377  #22   #
+
+new<-data.frame(c(x,y))
+new2 <- new[!is.na(new$x) == !is.na(new$y)]
+new2
+
+#plot
+pic<-jpeg(filename = 'corcoordbas.jpg')
+
+std<-sd(!is.na(y))
+?geom_ribbon
+cor<-ggplot(new2, aes(x,y))+
+        #shape=
+  xlab("Coordination Success by Item")+
+  ylab("Backward AS by Item") +
+  ylim(0,1)+
+  xlim(0,1)+
+theme_classic() +
+geom_point()+geom_abline()
+cor<- cor+geom_ribbon(aes(ymin=y-std, ymax=y+std), fill="steelblue2", alpha=0.1)
+
+cor + theme(panel.background = element_rect(fill = "white", colour = "black", linetype = "solid"), panel.grid.major = element_line(colour = "grey"))
+
+
+
+dev.off()
+
+```
+
+
+#successful/final cues against language plots with target items in ascending order
+
+```{r}
+#Englisch BAS
+png(file = 'baseng.png')
+
+alldata_E<-alldata %>% filter(language=='English')
+
+
+# for each target in non-face condition compute median of successfulcues_BAS
+target_to_sort <- as.character(unique(alldata_E$target))
+medians_of_successfulcues_BAS_for_target_to_sort <- c()
+for (index in (1:length(target_to_sort))){
+  current_target <- target_to_sort[index]
+  current_successfulcues_BAS <- alldata_E$successfulcues_BAS[which((as.character(alldata_E$target)==current_target) & (as.character(alldata_E$condition)=="non-face"))]
+  current_median <- median(current_successfulcues_BAS, na.rm = TRUE)
+  medians_of_successfulcues_BAS_for_target_to_sort <- append(medians_of_successfulcues_BAS_for_target_to_sort, current_median)
+}
+sorted_unique_targets <- target_to_sort[order(medians_of_successfulcues_BAS_for_target_to_sort, decreasing = FALSE)]
+alldata_E$target <- factor(alldata_E$target, levels=sorted_unique_targets)
+
+pe<-ggplot(alldata_E, aes(x=target, y=successfulcues_BAS, color=condition))+#+ geom_boxplot()
+  xlab("English Target Items")+
+  ylab("Final Backward AS")+
+  geom_boxplot() + geom_point(position=position_jitterdodge(), alpha=0.4) + theme_classic()
+pe<- pe + theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+  
+pe
+dev.off()
+
+
+# Eng FAS
+png(file = 'faseng.png')
+
+alldata_E<-alldata %>% filter(language=='English')
+
+
+# for each target in non-face condition compute median of successfulcues_BAS
+target_to_sort <- as.character(unique(alldata_E$target))
+medians_of_successfulcues_FAS_for_target_to_sort <- c()
+for (index in (1:length(target_to_sort))){
+  current_target <- target_to_sort[index]
+  current_successfulcues_FAS <- alldata_E$successfulcues_FAS[which((as.character(alldata_E$target)==current_target) & (as.character(alldata_E$condition)=="non-face"))]
+  current_median <- median(current_successfulcues_FAS, na.rm = TRUE)
+  medians_of_successfulcues_FAS_for_target_to_sort <- append(medians_of_successfulcues_FAS_for_target_to_sort, current_median)
+}
+sorted_unique_targets <- target_to_sort[order(medians_of_successfulcues_FAS_for_target_to_sort, decreasing = FALSE)]
+alldata_E$target <- factor(alldata_E$target, levels=sorted_unique_targets)
+
+pe<-ggplot(alldata_E, aes(x=target, y=successfulcues_FAS, color=condition))+#+ geom_boxplot()
+  xlab("English Target Items")+
+  ylab("Final Forward AS")+
+  geom_boxplot() + geom_point(position=position_jitterdodge(), alpha=0.4) + theme_classic()
+pe<- pe + theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+  
+pe
+dev.off()
+
+
+
+#Deu BAS
+png(file = 'basde.png')
+
+alldata_D<-alldata %>% filter(language=='German')
+
+# correct Brücke and Rüstung
+targets_for_correction <- unique(as.character(alldata_D$target))
+names(targets_for_correction) <- c(1:length(targets_for_correction))
+Rüstung <- targets_for_correction[14]
+Brücke <- targets_for_correction[20]
+alldata_D$target <- as.character(alldata_D$target)
+alldata_D$target[which(alldata_D$target == Rüstung)] <- c("Rüstung")
+alldata_D$target[which(alldata_D$target == Brücke)] <- c("Brücke")
+
+# for each target in non-face condition compute median of successfulcues_BAS
+target_to_sort <- as.character(unique(alldata_D$target))
+medians_of_successfulcues_BAS_for_target_to_sort <- c()
+for (index in (1:length(target_to_sort))){
+  current_target <- target_to_sort[index]
+  current_successfulcues_BAS <- alldata_D$successfulcues_BAS[which((as.character(alldata_D$target)==current_target) & (as.character(alldata_D$condition)=="non-face"))]
+  current_median <- median(current_successfulcues_BAS, na.rm = TRUE)
+  medians_of_successfulcues_BAS_for_target_to_sort <- append(medians_of_successfulcues_BAS_for_target_to_sort, current_median)
+}
+sorted_unique_targets <- target_to_sort[order(medians_of_successfulcues_BAS_for_target_to_sort, decreasing = FALSE)]
+alldata_D$target <- factor(alldata_D$target, levels=sorted_unique_targets)
+
+pe<-ggplot(alldata_D, aes(x=target, y=successfulcues_BAS, color=condition))+#+ geom_boxplot()
+  xlab("German Target Items")+
+  ylab("Final Backward AS")+
+  geom_boxplot() + geom_point(position=position_jitterdodge(), alpha=0.4) + theme_classic()
+pe<- pe + theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+  
+pe
+dev.off()
+
+
+
+
+#Deu FAS
+png(file = 'fasde.png')
+
+alldata_D<-alldata %>% filter(language=='German')
+
+# correct Brücke and Rüstung
+targets_for_correction <- unique(as.character(alldata_D$target))
+names(targets_for_correction) <- c(1:length(targets_for_correction))
+Rüstung <- targets_for_correction[14]
+Brücke <- targets_for_correction[20]
+alldata_D$target <- as.character(alldata_D$target)
+alldata_D$target[which(alldata_D$target == Rüstung)] <- c("Rüstung")
+alldata_D$target[which(alldata_D$target == Brücke)] <- c("Brücke")
+
+# for each target in non-face condition compute median of successfulcues_FAS
+target_to_sort <- as.character(unique(alldata_D$target))
+medians_of_successfulcues_FAS_for_target_to_sort <- c()
+for (index in (1:length(target_to_sort))){
+  current_target <- target_to_sort[index]
+  current_successfulcues_FAS <- alldata_D$successfulcues_FAS[which((as.character(alldata_D$target)==current_target) & (as.character(alldata_D$condition)=="non-face"))]
+  current_median <- median(current_successfulcues_FAS, na.rm = TRUE)
+  medians_of_successfulcues_FAS_for_target_to_sort <- append(medians_of_successfulcues_FAS_for_target_to_sort, current_median)
+}
+sorted_unique_targets <- target_to_sort[order(medians_of_successfulcues_FAS_for_target_to_sort, decreasing = FALSE)]
+alldata_D$target <- factor(alldata_D$target, levels=sorted_unique_targets)
+
+pe<-ggplot(alldata_D, aes(x=target, y=successfulcues_FAS, color=condition))+#+ geom_boxplot()
+  xlab("German Target Items")+
+  ylab("Final Forward AS")+
+  geom_boxplot() + geom_point(position=position_jitterdodge(), alpha=0.4) + theme_classic()
+pe<- pe + theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+  
+pe
+dev.off()
+```
+
+
+
+
+#data signallers for fas and  bas in each try (not only the final successful one)
+
+
+data fas and bas for signallers by try
+
+```{r}
+#signaller_bas
+#alldata[alldata$condition == "face", ] 
+data_signaller_bas <- data.frame(y=c(alldata$bas_tcfirst, alldata$bas_tcsecond, alldata$bas_tcthird, alldata$bas_tcfourth, alldata$bas_tcfifth), x= c(
+                                      rep("1", length(alldata$bas_tcfirst)), 
+                                                                                                                                        rep("2", length(alldata$bas_tcsecond)),
+                                                                                                                                        rep("3", length(alldata$bas_tcthird)),
+                                                                                                                                        rep("4", length(alldata$bas_tcfourth)),
+                                                                                                                                        rep("5", length(alldata$bas_tcfifth))), condition=alldata$condition)
+print(data_signaller_bas) 
+
+data_signaller_bas$y
+
+
+#signaller_fas
+
+data_signaller_fas <- data.frame(y=c(alldata$fas_tcfirst, alldata$fas_tcsecond, alldata$fas_tcthird, alldata$fas_tcfourth, alldata$fas_tcfifth), x= c(
+                                    rep("1", length(alldata$fas_tcfirst)), 
+                                                                                                                                      rep("2", length(alldata$fas_tcsecond)),
+                                                                                                                                      rep("3", length(alldata$fas_tcthird)),
+                                                                                                                                      rep("4", length(alldata$fas_tcfourth)),
+                                                                                                                                      rep("5", length(alldata$fas_tcfifth))), condition=alldata$condition)
+
+
+```
+
+#Plots for the AS of each try 
+```{r}
+#fas
+data_signaller_fas
+png(filename="p2.png")
+p2<-ggplot(data_signaller_fas, aes(x=x, y=y, color=condition)) +
+ylab("Forward AS of the Signallers") +
+xlab("Number of Tries") +
+geom_boxplot()+geom_point(position=position_jitterdodge(), alpha=0.4) +  theme_classic() 
+p2
+dev.off()
+
+
+#now BAS
+png(filename="p3.png")
+p3<-ggplot(data_signaller_bas, aes(x=x, y=y, color=condition)) +
+ylab("Backward AS of the Signallers") +
+xlab("Number of Tries") +
+geom_boxplot()+geom_point(position=position_jitterdodge(), alpha=0.4) +  theme_classic() 
+p3
+dev.off()
+```
+
+
+
+****************************************************************************************************************************************************************************************************
+****************************************************************************************************************************************************************************************************
+
+
+
+#LME MODELS
+
+#Data Analysis: Beta Regression
+
+```{r}
+#read in combined German and English data with AS
+alldata <- read.csv('alldatawithAS_E&G.csv', sep=",",
+                    header=TRUE, 
+                    na.strings=c("NA","na"), 
+                    stringsAsFactors = TRUE) #unlemmatized
+
+print(alldata)
+```
+
+
+*Explanation of the variable terms* 
+
+"condition" refers to the conditions face vs. non-face and "language" to the conditions English vs. German."target" is the item the signaller received.
+
+
+#Preparation for Beta GLMM:
+*Pull out AS (FAS and BAS) of final successful cue (=DV)*
+
+```{r}
+#signallers' FAS of the final successful cues
+
+alldata_first <- alldata[which(as.numeric(alldata$numberoftries) == 1), c("fas_tcfirst")]
+alldata$successfulcues_FAS[which(as.numeric(alldata$numberoftries) == 1)] <- alldata_first
+
+alldata_second <- alldata[which(as.numeric(alldata$numberoftries) == 2), c("fas_tcsecond")]
+alldata$successfulcues_FAS[which(as.numeric(alldata$numberoftries) == 2)] <- alldata_second
+
+alldata_third <- alldata[which(as.numeric(alldata$numberoftries) == 3), c("fas_tcthird")]
+alldata$successfulcues_FAS[which(as.numeric(alldata$numberoftries) == 3)] <- alldata_third
+
+alldata_fourth <- alldata[which(as.numeric(alldata$numberoftries) == 4), c("fas_tcfourth")]
+alldata$successfulcues_FAS[which(as.numeric(alldata$numberoftries) == 4)] <- alldata_fourth
+
+alldata_fifth <- alldata[which(as.numeric(alldata$numberoftries) == 5), c("fas_tcfifth")]
+alldata$successfulcues_FAS[which(as.numeric(alldata$numberoftries) == 5)] <- alldata_fifth
+
+
+#signallers' BAS of the final successful cues
+
+alldata_first_bas <- alldata[which(as.numeric(alldata$numberoftries) == 1), c("bas_tcfirst")]
+alldata$successfulcues_BAS[which(as.numeric(alldata$numberoftries) == 1)] <- alldata_first_bas
+
+alldata_second_bas <- alldata[which(as.numeric(alldata$numberoftries) == 2), c("bas_tcsecond")]
+alldata$successfulcues_BAS[which(as.numeric(alldata$numberoftries) == 2)] <- alldata_second_bas
+
+alldata_third_bas <- alldata[which(as.numeric(alldata$numberoftries) == 3), c("bas_tcthird")]
+alldata$successfulcues_BAS[which(as.numeric(alldata$numberoftries) == 3)] <- alldata_third_bas
+
+alldata_fourth_bas <- alldata[which(as.numeric(alldata$numberoftries) == 4), c("bas_tcfourth")]
+alldata$successfulcues_BAS[which(as.numeric(alldata$numberoftries) == 4)] <- alldata_fourth_bas
+
+alldata_fifth_bas <- alldata[which(as.numeric(alldata$numberoftries) == 5), c("bas_tcfifth")]
+alldata$successfulcues_BAS[which(as.numeric(alldata$numberoftries) == 5)] <- alldata_fifth_bas
+
+```
+
+*Why a Beta regression with logit function?*
+
+Beta regression is used because the dependent variable (DV) is bounded between 0 and 1 - it is a probability. 
+###not sure about the link function "logit"!###
+
+*Preliminary thoughts about random effects structure: Which varying intercepts/slopes do I need, if any?*
+
+Information: The expression  "1+"  examines by-participant varying intercepts and varying predictor (here either condition with levels face vs. nonface or the language condition) slopes with slope/intercept correlation. If I didn't want to have a correlation between the intercepts and slopes I could enter (1|pair) + (0 + condition|pair) in my model. However, I will follow Barr's (2013) approach of a maximal random effects structure and only exclude correlation terms or slopes stepwise in case the model fails converging, is overparametized or its fit is bad as indicated by model comparisons.
+
+Although I'm following Barr's (2013) approach, my knowledge and thoughts stated below are mainly based on explanations by Winter (2020).
+
+(1) Participants may differ in face condition effects (face vs. non-face), so I will fit by-pair varying slopes: *(1+condition|pair)*. 
+
+(2) Participants also differ in the language conditions (English vs. German), but they also differ in each round independent of the language condition, so is *(1+language|pair)* really necessary to include? I don't think so, however, the items/stimuli (=targets) are different for each language. So *(1+language|target)* might be important to account for. At the beginning I will include everything, though, also *(1+language|pair)* as suggested by Barr (2013).
+
+(3) Participants received the stimuli in random order, so the items might differ in the face vs. non-face conditions. It might be useful to include *(1+condition|target)*.
+
+(4) Additionally, an item might be unique  and introduce dependencies and thus influence responses to itself even though participants are different (cf. Winter 2020, 243). Therefore, I will also include a varying intercept for item: *(1|item)*.
+
+(5) Same as (4) can be the case for participants - in my case pairs - which is why I also include a random intercept for pair: *(1|pair)*.
+
+(6) It is also worth investigating whether there is a statistical interaction, for example, *(1|language:target)*. 
+
+#The best models
+After various model comparisons and considerations of what makes sense to include (e.g. experimental manipulations even if they reduced model fit), these were the best models
+
+```{r}
+#BAS
+
+#round -1 so that intercept is not round 0 (because round starts at one)
+alldata$round2 <- as.numeric(alldata$round)-1
+print(alldata$round2)
+
+
+#DV=final (successful) FAS of the signallers
+model_BAS<- glmmTMB(alldata$successfulcues_BAS ~ language + condition + condition*language+ numberoftries+ round2+ (1|pair) + (1|target), alldata, beta_family(link="logit"))
+summary(model_BAS)
+
+#FAS
+# DV= final (successful) FAS of the signallers
+model_FAS <- glmmTMB(alldata$successfulcues_FAS ~ condition + language + numberoftries*language + numberoftries+(1|pair) +(1|target), alldata, beta_family(link="logit")) 
+summary(model_FAS)
+```
+
+
+(Only a few of many model comparisons:)
+
+```{r}
+#relevel
+alldata$condition<-factor(alldata$condition, level=c('non-face', 'face'))
+alldata$language<-factor(alldata$language, level=c('English', 'German'))
+```
+
+
+#FAS
+```{r}
+
+model_FAS_1<- glmmTMB(alldata$successfulcues_FAS ~ language + condition*numberoftries + numberoftries + (1|pair) + (1|target), alldata, beta_family(link="logit")) 
+summary(model_FAS_1) #lang English, nb of tries sig
+
+
+model_FAS_2<- glmmTMB(alldata$successfulcues_FAS ~ language + condition*numberoftries + numberoftries + (1|pair) + (1|target), alldata, beta_family(link="logit")) 
+summary(model_FAS_2) #intercept, lang Ger, nb of tries sig
+
+anova(model_FAS_1, model_FAS_2) 
+
+model_FAS_3 <- glmmTMB(alldata$successfulcues_FAS ~ condition + language + numberoftries*language + numberoftries+(1|pair) +(1|target), alldata, beta_family(link="logit")) 
+summary(model_FAS_3) 
+
+model_FAS <- glmmTMB(alldata$successfulcues_FAS ~ condition + language + numberoftries*language + numberoftries+(1|pair) +(1|target), alldata, beta_family(link="logit")) 
+summary(model_FAS)
+
+anova(model_FAS_2, model_FAS)
+
+model_FAS_4<- glmmTMB(alldata$successfulcues_FAS ~ language + numberoftries*language + numberoftries+ condition +(1|pair) + (1|target), alldata, beta_family(link="logit")) 
+summary(model_FAS_4) #incl cond
+
+model_FAS_5<- glmmTMB(alldata$successfulcues_FAS ~ language + condition + numberoftries*language + numberoftries+ (1|pair) + (1|target), alldata, beta_family(link="logit")) 
+summary(model_FAS_5)
+
+
+anova(model_FAS_3, model_FAS_4)
+
+model_FAS_6<- glmmTMB(alldata$successfulcues_FAS ~ language + condition + language*condition + numberoftries*language + numberoftries+ (1|pair) + (1|target), alldata, beta_family(link="logit")) 
+summary(model_FAS_6)
+
+anova(model_FAS_5, model_FAS_6)
+
+
+model_FAS_7<- glmmTMB(alldata$successfulcues_FAS ~ language + numberoftries*language + numberoftries*round + numberoftries+ (1|pair) + (1|target), alldata, beta_family(link="logit")) 
+summary(model_FAS_7)
+
+anova(model_FAS_6, model_FAS_4)
+anova(model_FAS_6, model_FAS_5)
+anova(model_FAS_6, model_FAS)
+anova(model_FAS, model_FAS_4)
+
+```
+
+
+#BAS
+```{r}
+
+model_BAS_1<- glmmTMB(alldata$successfulcues_BAS ~ language + condition*numberoftries + numberoftries + (1|pair) + (1|target), alldata, beta_family(link="logit")) 
+summary(model_BAS_1) 
+
+#without interaction term
+
+model_BAS_2<- glmmTMB(alldata$successfulcues_BAS ~ language + condition + numberoftries + (1|pair) + (1|target), alldata, beta_family(link="logit")) 
+summary(model_BAS_2)
+
+
+model_BAS_3<- glmmTMB(alldata$successfulcues_BAS ~ language + condition + numberoftries + numberoftries*round+ round+ (1|pair) + (1|target), alldata, beta_family(link="logit")) 
+summary(model_BAS_3)
+
+
+anova(model_BAS_1, model_BAS_2)
+anova(model_BAS_2, model_BAS_3)
+
+
+
+#round2 (round -1)
+model_BAS<- glmmTMB(alldata$successfulcues_BAS ~ language + condition + condition*language+ numberoftries + round2+ numberoftries*round2+(1|pair) + (1|target), alldata, beta_family(link="logit"))
+summary(model_BAS)
+
+#round
+model_BAS_round<- glmmTMB(alldata$successfulcues_BAS ~ language + condition + condition*language+ numberoftries + round+ numberoftries*round+(1|pair) + (1|target), alldata, beta_family(link="logit"))
+summary(model_BAS_round)
+
+anova(model_BAS, model_BAS_round)
+
+
+model_BAS_round2 <- glmmTMB(alldata$successfulcues_BAS ~ language + condition + condition*language+ numberoftries + round+ (1|pair) + (1|target), alldata, beta_family(link="logit"))
+summary(model_BAS_round2)
+
+anova(model_BAS, model_BAS_round2)
+```
+
+
+#model with number of tries as DV
+```{r}
+#Best fit
+model <- lmer(numberoftries ~ condition + language + round + (1 | pair) + (1|target), data = alldata, REML = FALSE)
+summary(model) 
+
+
+#some comparisons
+
+model2<-lmer(numberoftries ~  round + language*round + (1 | pair) + (1|target), data = alldata, REML = FALSE)
+summary(model2) 
+
+model3 <- lmer(numberoftries ~ condition + language + round + (1 | pair) + (1|target), data = alldata, REML = FALSE)
+summary(model3)
+
+model <- lmer(numberoftries ~ condition + language + round + (1 | pair) + (1|target), data = alldata, REML = FALSE)
+summary(model) #better fit than model2
+anova(model, model3)
+
+```
+
+#correlation
+```{r}
+cor.test(alldata$round, alldata$numberoftries, method=c("spearman"))
+```
+
+
+#correlation round and nb of tries; and correlation offinal successful cues by nb of tries and rounds
+```{r}
+#cor.test
+cor.test(alldata$round, alldata$numberoftries, method=c("spearman"))
+
+alldata$round <- as.numeric(alldata$round)
+alldata$numberoftries <- as.numeric(alldata$numberoftries)
+
+x<-alldata$round
+y<-alldata$successfulcues_BAS
+x2<-alldata$numberoftries
+                            
+cor.test(x, y, method = c("spearman")) 
+cor.test(x2, y, method = c("spearman")) 
+
+
+#plots for  rounds and nb of tries
+
+#nb of tries
+jpeg(file="corplot1.jpg")
+
+p<-ggplot(alldata, aes(x=numberoftries, y=successfulcues_BAS, color=condition)) + 
+geom_point()+
+ylab("Backward AS of the Signallers") +
+xlab("Number of Tries to Success") +
+geom_boxplot() +geom_point() +  geom_rangeframe() + theme_classic()
+
+plot<-p + theme(panel.grid.major = element_line(size = 0.25,  colour = "grey"), legend.title = element_blank())
+plot
+
+dev.off()
+
+#rounds
+
+png(filename="corplot2.png")
+
+f<-ggplot(alldata, aes(x=round, y=successfulcues_BAS, color=condition, shape=condition)) +
+geom_point() +  geom_smooth(method=lm,  sd=T, aes(fill=condition), alpha=0.3, fullrange=TRUE)+
+ylab("Final Backward AS of the Signallers") +
+xlab("Rounds") 
+f<- f+theme(legend.position=c(0, 0.5))+  
+theme_classic()
+f
+
+dev.off()
+
+```
+
+

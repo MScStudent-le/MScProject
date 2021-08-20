@@ -1,0 +1,711 @@
+---
+title: "Preparation: calculate and get AS in data collection file"
+author: "MScStudent"
+date: "20/08/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+
+#check working directory
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_knit$set(root.dir = "C:/Users/myria/Documents/Desktop/GitHub")
+getwd()
+```
+
+###Prepare the data files###
+
+#1st Step: Turn requencies in German databases into Associative Strengths (AS)
+*divide the frequency of the target-response pair in the database by the sum of all frequencies of one token*  
+
+```{r}
+# read in all the German files
+#German databases
+Assocs <- read.csv("Assocs.csv", sep=",", header=TRUE) # English
+compound_NN_AMT <- read.csv("compound_NN.assoc-AMT.csv", sep="\t", header=FALSE, check.names=FALSE) # deutsch
+nag.assoc_second <- read.csv("nag.assoc-second.csv", sep="\t", header=FALSE) # deutsch
+nag.assoc_first <- read.table("nag.assoc-first.csv", quote = "", header=TRUE) # deutsch
+for (index in (1:nrow(nag.assoc_first))){
+  nag.assoc_first[index, 1] <- substr(nag.assoc_first[index, 1], start = 2, stop = nchar(nag.assoc_first[index, 1]))
+  nag.assoc_first[index, 3] <- substr(nag.assoc_first[index, 3], start = 1, stop = nchar(nag.assoc_first[index, 3])-1)
+}
+
+#data collection file
+Experiment_data_latestversion_german_csv <- read.csv("Experiment_data_latestversion_german_csv.csv", sep="\t", header=TRUE, check.names=FALSE, encoding="UTF-8") # clean
+Experiment_data_latestversion_csv <- read.csv("Experiment_data_latestversion_csv.csv", sep="\t", header=TRUE, check.names=FALSE, encoding="UTF-8") # clean
+
+#which database to use: targets&databases.csv
+targets_databases <- read.csv("targets&databases.csv", sep=";", header=TRUE)
+targets_databases <- read.table("targets&databases.csv", sep=";", header=TRUE)
+
+#manual correction of Umlaut:
+targets_databases[14, 1] <- "RÃ¼stung"
+targets_databases[20, 1] <- "BrÃ¼cke"
+
+#for German: get associative strength:
+df_all_targets <- NULL
+for (index in (1:nrow(targets_databases))){
+  target_word <- targets_databases[index ,"target"]
+  print(target_word)
+  file <- targets_databases[index ,"database"]
+  print(file)
+  if (file == "NAG assoc 1st"){
+    file_name <- nag.assoc_first
+  }
+  if (file == "compound.NN.assoc-AMT"){
+    file_name <- compound_NN_AMT
+  }
+  if (file == "nag assoc second"){
+    file_name <- nag.assoc_second
+  }
+  #make all counts in files numeric
+  file_name[,3] <- as.integer(file_name[,3])
+  
+  #calculate forward associative strengths; first forward AS, then backward AS
+  subset_forward <- file_name[file_name[, 1] == target_word, ]
+  total_guesses <- sum(as.integer(subset_forward[, 3]))
+  results_forward <- subset_forward[, 3]/total_guesses
+  results_backward <- c()
+  for (inner_index in (1:nrow(subset_forward))){
+    new_target <- subset_forward[inner_index, 2]
+    new_subset <- file_name[file_name[, 1] == new_target, ]
+    backwards_count <- new_subset[new_subset[, 2]== target_word, 3]
+    if (length(backwards_count) == 0){
+      resuls_to_add <- NA
+    } else {
+      resuls_to_add <- backwards_count/sum(as.integer(new_subset[, 3]))
+    }
+    results_backward <- append(results_backward, resuls_to_add)
+  }
+  new_df <- cbind(subset_forward[,1:2], results_forward, results_backward)
+  print(new_df)
+  if (is.null(df_all_targets)){
+    df_all_targets <- new_df
+  } else{
+    colnames(new_df) <- colnames(df_all_targets)
+    df_all_targets <- rbind(df_all_targets, new_df)
+  }
+}
+
+#save as csv file
+
+write.csv(df_all_targets, file="df_all_targets_german.csv")
+```
+
+
+
+#2nd Step: Tranfer AS from databases into data collection files
+
+*for the German data*
+
+```{r}
+#read in German database with the AS (instead of frequencies)
+german_database <- read.csv('all_targets_german.csv', sep=",", header=TRUE) #Doc incl. corrections for Umlaut and FAS/BAS as col names
+
+#sanity checks
+str(german_database)
+head(german_database)
+summary(german_database)
+
+#read in German data: data collection document
+germandata <- read.csv('germandata.csv', sep=",", header=TRUE) #cleanded up without lemmatisation
+
+#sanity checks
+str(germandata)
+head(germandata)
+summary(germandata)
+```
+
+```{r}
+#ensure that types (strings vs. numbers) are stored correctly
+
+german_database$target <- as.factor(german_database$target)
+german_database$cue <- as.factor(german_database$cue)
+germandata$target <- as.factor(germandata$target)
+
+
+german_database$FAS <- as.numeric(german_database$FAS)
+german_database$BAS <- as.numeric(german_database$BAS)
+germandata$fas_tcfirst <- as.numeric(germandata$fas_tcfirst)
+```
+
+
+Abbreviations in the code:
+AS=associative strength
+FAS = forward AS
+BAS = backward AS
+tc = refers to target-cue/cue-target associations (by the signaller) #
+(cr = referst to response-cue/cue-response response asociations (by the guesser))
+
+*Insert German forward AS (FAS) from database in data collection file*
+
+```{r}
+###AS to AS 
+
+#for all forward AS (FAS):
+#for target --> cues 1-5
+
+#target -> cue 1; fas_tcfirst
+
+for (i in (1:nrow(germandata))){
+  matching_row_in_german_database <- which((as.character(german_database$target) == as.character(germandata$target[i]))&(as.character(german_database$cue) == as.character(germandata$first_cue[i])))
+  if (length(matching_row_in_german_database) == 1){
+    germandata$fas_tcfirst[i] <- german_database$FAS[matching_row_in_german_database]
+  } else {
+    germandata$fas_tcfirst[i] <- NA
+  }
+}
+
+
+#for fas_tcsecond
+
+for (i in (1:nrow(germandata))){
+  matching_row_in_german_database <- which((as.character(german_database$target) == as.character(germandata$target[i]))&(as.character(german_database$cue) == as.character(germandata$second_cue[i]))) #second cue
+  if (length(matching_row_in_german_database) == 1){
+    germandata$fas_tcsecond[i] <- german_database$FAS[matching_row_in_german_database]
+  } else {
+    germandata$fas_tcsecond[i] <- NA
+  }
+}
+
+#for fas_tcthird
+
+for (i in (1:nrow(germandata))){
+  matching_row_in_german_database <- which((as.character(german_database$target) == as.character(germandata$target[i]))&(as.character(german_database$cue) == as.character(germandata$third_cue[i]))) #second cue
+  if (length(matching_row_in_german_database) == 1){
+    germandata$fas_tcthird[i] <- german_database$FAS[matching_row_in_german_database]
+  } else {
+    germandata$fas_tcthird[i] <- NA
+  }
+}
+
+#for fas_tcfourth
+
+for (i in (1:nrow(germandata))){
+  matching_row_in_german_database <- which((as.character(german_database$target) == as.character(germandata$target[i]))&(as.character(german_database$cue) == as.character(germandata$fourth_cue[i]))) #second cue
+  if (length(matching_row_in_german_database) == 1){
+    germandata$fas_tcfourth[i] <- german_database$FAS[matching_row_in_german_database]
+  } else {
+    germandata$fas_tcfourth[i] <- NA
+  }
+} 
+
+#for fas_tcfifth
+
+for (i in (1:nrow(germandata))){
+  matching_row_in_german_database <- which((as.character(german_database$target) == as.character(germandata$target[i]))&(as.character(german_database$cue) == as.character(germandata$fifth_cue[i]))) #second cue
+  if (length(matching_row_in_german_database) == 1){
+    germandata$fas_tcfifth[i] <- german_database$FAS[matching_row_in_german_database]
+  } else {
+    germandata$fas_tcfifth[i] <- NA
+  }
+}
+
+
+#for cue 1-5 --> responses 1-5
+#cue 1 --> response 1
+
+for (i in (1:nrow(germandata))){
+  matching_row_in_german_database <- which((as.character(german_database$target) == as.character(germandata$first_cue[i]))&(as.character(german_database$cue) == as.character(germandata$first_response[i]))) 
+  if (length(matching_row_in_german_database) == 1){
+    germandata$fas_crfirst[i] <- german_database$FAS[matching_row_in_german_database]
+  } else {
+    germandata$fas_crfirst[i] <- NA
+  }
+}
+
+#cue 2 --> response 2
+
+for (i in (1:nrow(germandata))){
+  matching_row_in_german_database <- which((as.character(german_database$target) == as.character(germandata$second_cue[i]))&(as.character(german_database$cue) == as.character(germandata$second_response[i]))) 
+  if (length(matching_row_in_german_database) == 1){
+    germandata$fas_crsecond[i] <- german_database$FAS[matching_row_in_german_database]
+  } else {
+    germandata$fas_crsecond[i] <- NA
+  }
+}
+
+
+#cue 3 --> response 3
+
+for (i in (1:nrow(germandata))){
+  matching_row_in_german_database <- which((as.character(german_database$target) == as.character(germandata$third_cue[i]))&(as.character(german_database$cue) == as.character(germandata$third_response[i]))) 
+  if (length(matching_row_in_german_database) == 1){
+    germandata$fas_crthird[i] <- german_database$FAS[matching_row_in_german_database]
+  } else {
+    germandata$fas_crthird[i] <- NA
+  }
+}
+
+
+#cue 4 --> response 4
+
+for (i in (1:nrow(germandata))){
+  matching_row_in_german_database <- which((as.character(german_database$target) == as.character(germandata$fourth_cue[i]))&(as.character(german_database$cue) == as.character(germandata$fourth_response[i])))
+  if (length(matching_row_in_german_database) == 1){
+    germandata$fas_crfourth[i] <- german_database$FAS[matching_row_in_german_database]
+  } else {
+    germandata$fas_crfourth[i] <- NA
+  }
+}
+
+#cue 5 --> response 5
+
+for (i in (1:nrow(germandata))){
+  matching_row_in_german_database <- which((as.character(german_database$target) == as.character(germandata$fifth_cue[i]))&(as.character(german_database$cue) == as.character(germandata$fifth_response[i])))
+  if (length(matching_row_in_german_database) == 1){
+    germandata$fas_crfifth[i] <- german_database$FAS[matching_row_in_german_database]
+  } else {
+    germandata$fas_crfifth[i] <- NA
+  }
+}
+```
+
+
+*Insert German backward AS (BAS) from database in data collection file*
+
+```{r}
+#for all the German BAS
+#cue 1-5 to response 1-5
+
+#cue 1 --> target
+
+
+for (i in (1:nrow(germandata))){
+  matching_row_in_german_database <- which((as.character(german_database$target) == as.character(germandata$target[i]))&(as.character(german_database$cue) == as.character(germandata$first_cue[i])))
+  if (length(matching_row_in_german_database) == 1){
+    germandata$bas_tcfirst[i] <- german_database$BAS[matching_row_in_german_database]
+  } else {
+    germandata$bas_tcfirst[i] <- NA
+  }
+}
+
+#cue 2 --> target
+
+for (i in (1:nrow(germandata))){
+ matching_row_in_german_database <- which((as.character(german_database$target) == as.character(germandata$target[i]))&(as.character(german_database$cue) == as.character(germandata$second_cue[i])))
+  if (length(matching_row_in_german_database) == 1){
+    germandata$bas_tcsecond[i] <- german_database$BAS[matching_row_in_german_database]
+  } else {
+    germandata$bas_tcsecond[i] <- NA
+  }
+}
+
+#cue 3 --> target
+
+for (i in (1:nrow(germandata))){
+  matching_row_in_german_database <- which((as.character(german_database$target) == as.character(germandata$target[i]))&(as.character(german_database$cue) == as.character(germandata$third_cue[i])))
+  if (length(matching_row_in_german_database) == 1){
+    germandata$bas_tcthird[i] <- german_database$BAS[matching_row_in_german_database]
+  } else {
+    germandata$bas_tcthird[i] <- NA
+  }
+}
+
+#cue 4 --> target
+
+for (i in (1:nrow(germandata))){
+  matching_row_in_german_database <- which((as.character(german_database$target) == as.character(germandata$target[i]))&(as.character(german_database$cue) == as.character(germandata$fourth_cue[i])))
+  if (length(matching_row_in_german_database) == 1){
+    germandata$bas_tcfourth[i] <- german_database$BAS[matching_row_in_german_database]
+  } else {
+    germandata$bas_tcfourth[i] <- NA
+  }
+}
+
+
+#cue 5 --> target
+
+for (i in (1:nrow(germandata))){
+ matching_row_in_german_database <- which((as.character(german_database$target) == as.character(germandata$target[i]))&(as.character(german_database$cue) == as.character(germandata$fifth_cue[i])))
+  if (length(matching_row_in_german_database) == 1){
+    germandata$bas_tcfifth[i] <- german_database$BAS[matching_row_in_german_database]
+  } else {
+    germandata$bas_tcfifth[i] <- NA
+  }
+}
+
+```
+
+```{r}
+#response 1-5 --> cue 1-5
+#response 1 --> cue 1
+
+for (i in (1:nrow(germandata))){
+  matching_row_in_german_database <- which((as.character(german_database$target) == as.character(germandata$first_cue[i]))&(as.character(german_database$cue) == as.character(germandata$first_response[i])))
+  if (length(matching_row_in_german_database) == 1){
+    germandata$bas_crfirst[i] <- german_database$BAS[matching_row_in_german_database]
+  } else {
+    germandata$bas_crfirst[i] <- NA
+  }
+}
+
+#response 2 --> cue 2
+
+for (i in (1:nrow(germandata))){
+  matching_row_in_german_database <- which((as.character(german_database$target) == as.character(germandata$tsecond_cue[i]))&(as.character(german_database$cue) == as.character(germandata$second_response[i])))
+  if (length(matching_row_in_german_database) == 1){
+    germandata$bas_crsecond[i] <- german_database$BAS[matching_row_in_german_database]
+  } else {
+    germandata$bas_crsecond[i] <- NA
+  }
+}
+
+#response 3 --> cue 3
+
+for (i in (1:nrow(germandata))){
+  matching_row_in_german_database <- which((as.character(german_database$target) == as.character(germandata$third_cue[i]))&(as.character(german_database$cue) == as.character(germandata$third_response[i])))
+  if (length(matching_row_in_german_database) == 1){
+    germandata$bas_crthird[i] <- german_database$BAS[matching_row_in_german_database]
+  } else {
+    germandata$bas_crthird[i] <- NA
+  }
+}
+
+
+#response 4 --> cue 4
+
+for (i in (1:nrow(germandata))){
+ matching_row_in_german_database <- which((as.character(german_database$target) == as.character(germandata$fourth_cue[i]))&(as.character(german_database$cue) == as.character(germandata$fourth_response[i])))
+  if (length(matching_row_in_german_database) == 1){
+    germandata$bas_crfourth[i] <- german_database$BAS[matching_row_in_german_database]
+  } else {
+    germandata$bas_crfourth[i] <- NA
+  }
+}
+
+#response 5 --> cue 5
+
+for (i in (1:nrow(germandata))){
+  matching_row_in_german_database <- which((as.character(german_database$target) == as.character(germandata$fifth_cue[i]))&(as.character(german_database$cue) == as.character(germandata$fifth_response[i])))
+  if (length(matching_row_in_german_database) == 1){
+    germandata$bas_crfifth[i] <- german_database$BAS[matching_row_in_german_database]
+  } else {
+    germandata$bas_crfifth[i] <- NA
+  }
+}
+```
+
+
+```{r}
+#replace all empty cells with NA
+
+germandata[germandata == ""] <- NA
+```
+
+```{r}
+#save amended germandata with the added AS from the database in folder
+
+write.csv(germandata, file="germandata_withAS.csv")
+
+```
+
+
+
+
+
+
+*same for the English data*
+
+The English Small World of Words (SWOW) database already has AS (not frequencies), so I can directly start with reading in the the database and inserting the AS from SWOW into my English data collection file
+
+```{r}
+#read in English database (=SWOW)
+swow <- read.csv('Assocs.csv', sep=",", header=TRUE)
+
+#sanity checks
+str(swow)
+head(swow)
+summary(swow)
+
+#read in English data: data collection document
+englishdata <- read.csv('englishdata.csv', sep=",", header=TRUE) #cleanded up without lemmatisation
+
+#sanity checks
+str(englishdata)
+head(englishdata)
+summary(englishdata)
+```
+
+```{r}
+#ensure that types stored correctly
+
+swow$ï..cue <- as.factor(swow$ï..cue)
+swow$response <- as.factor(swow$response)
+englishdata$target <- as.factor(englishdata$target)
+
+
+swow$R1.Strength <- as.numeric(swow$R1.Strength)
+englishdata$fas_tcfirst <- as.numeric(englishdata$fas_tcfirst)
+```
+
+
+*Insert English FAS from database in data collection file*
+
+
+```{r}
+ 
+#for all English forward AS (FAS):
+
+#for target --> cues 1-5
+
+#for target --> cue 1; fas_tcfirst
+
+for (i in (1:nrow(englishdata))){
+  matching_row_in_swow <- which((as.character(swow$ï..cue) == as.character(englishdata$target[i]))&(as.character(swow$response) == as.character(englishdata$first_cue[i])))
+  if (length(matching_row_in_swow) == 1){
+    englishdata$fas_tcfirst[i] <- swow$R1.Strength[matching_row_in_swow]
+  } else {
+    englishdata$fas_tcfirst[i] <- NA
+  }
+}
+
+
+#for target --> cue 2; fas_tcsecond
+
+for (i in (1:nrow(englishdata))){
+  matching_row_in_swow <- which((as.character(swow$ï..cue) == as.character(englishdata$target[i]))&(as.character(swow$response)  == as.character(englishdata$second_cue[i])))  # for second cue!
+  if (length(matching_row_in_swow) == 1){
+    englishdata$fas_tcsecond[i] <- swow$R1.Strength[matching_row_in_swow]
+  } else {
+    englishdata$fas_tcsecond[i] <- NA
+  }
+}
+
+
+#for target --> cue 3; fas_tcthird
+
+for (i in (1:nrow(englishdata))){
+  matching_row_in_swow <- which((as.character(swow$ï..cue) == as.character(englishdata$target[i]))&(as.character(swow$response)  == as.character(englishdata$third_cue[i])))  # for third cue!
+  if (length(matching_row_in_swow) == 1){
+    englishdata$fas_tcthird[i] <- swow$R1.Strength[matching_row_in_swow]
+  } else {
+    englishdata$fas_tcthird[i] <- NA
+  }
+}
+
+#for fas_tcfourth
+
+for (i in (1:nrow(englishdata))){
+  matching_row_in_swow <- which((as.character(swow$ï..cue) == as.character(englishdata$target[i]))&(as.character(swow$response)  == as.character(englishdata$fourth_cue[i])))  # for fourth cue!
+  if (length(matching_row_in_swow) == 1){
+    englishdata$fas_tcfourth[i] <- swow$R1.Strength[matching_row_in_swow]
+  } else {
+    englishdata$fas_tcfourth[i] <- NA
+  }
+}
+
+#for fas_tcfifth
+
+for (i in (1:nrow(englishdata))){
+  matching_row_in_swow <- which((as.character(swow$ï..cue) == as.character(englishdata$target[i]))&(as.character(swow$response)  == as.character(englishdata$fifth_cue[i])))  # for fifth cue!
+  if (length(matching_row_in_swow) == 1){
+    englishdata$fas_tcfifth[i] <- swow$R1.Strength[matching_row_in_swow]
+  } else {
+    englishdata$fas_tcfifth[i] <- NA
+  }
+}
+
+
+#same for cues 1-5 -->responses 1-5
+#for cue 1--> response 1; fas_crfirst
+
+for (i in (1:nrow(englishdata))){
+  matching_row_in_swow <- which((as.character(swow$ï..cue) == as.character(englishdata$first_cue[i]))&(as.character(swow$response)  == as.character(englishdata$first_response[i])))  # for first response
+  if (length(matching_row_in_swow) == 1){
+    englishdata$fas_crfirst[i] <- swow$R1.Strength[matching_row_in_swow]
+  } else {
+    englishdata$fas_crfirst[i] <- NA
+  }
+}
+#for cue 2 --> response 2;  fas_crsecond
+
+for (i in (1:nrow(englishdata))){
+  matching_row_in_swow <- which((as.character(swow$ï..cue) == as.character(englishdata$second_cue[i]))&(as.character(swow$response)  == as.character(englishdata$second_response[i])))  # for second response
+  if (length(matching_row_in_swow) == 1){
+    englishdata$fas_crsecond[i] <- swow$R1.Strength[matching_row_in_swow]
+  } else {
+    englishdata$fas_crsecond[i] <- NA
+  }
+}
+
+#for fas_crthird
+
+for (i in (1:nrow(englishdata))){
+  matching_row_in_swow <- which((as.character(swow$ï..cue) == as.character(englishdata$third_cue[i]))&(as.character(swow$response)  == as.character(englishdata$third_response[i])))  # for third response
+  if (length(matching_row_in_swow) == 1){
+    englishdata$fas_crthird[i] <- swow$R1.Strength[matching_row_in_swow]
+  } else {
+    englishdata$fas_crthird[i] <- NA
+  }
+}
+
+#for fas_crfourth
+
+for (i in (1:nrow(englishdata))){
+  matching_row_in_swow <- which((as.character(swow$ï..cue) == as.character(englishdata$fourth_cue[i]))&(as.character(swow$response)  == as.character(englishdata$fourth_response[i])))  # for fourth response
+  if (length(matching_row_in_swow) == 1){
+    englishdata$fas_crfourth[i] <- swow$R1.Strength[matching_row_in_swow]
+  } else {
+    englishdata$fas_crfourth[i] <- NA
+  }
+}
+
+#for fas_crfifth
+
+for (i in (1:nrow(englishdata))){
+  matching_row_in_swow <- which((as.character(swow$ï..cue) == as.character(englishdata$fifth_cue[i]))&(as.character(swow$response)  == as.character(englishdata$fifth_response[i])))  # for fifth response
+  if (length(matching_row_in_swow) == 1){
+    englishdata$fas_crfifth[i] <- swow$R1.Strength[matching_row_in_swow]
+  } else {
+    englishdata$fas_crfifth[i] <- NA
+  }
+}
+
+
+```
+
+
+*Insert English BAS from database in data collection file*
+
+```{r}
+#for all English backward AS (BAS)
+
+#for cue 1-5 --> target
+#cue1 --> target; bas_tcfirst
+
+for (i in (1:nrow(englishdata))){
+  matching_row_in_swow <- which((as.character(swow$ï..cue) == as.character(englishdata$first_cue[i]))&(as.character(swow$response)  == as.character(englishdata$target[i])))  # bas for first cue
+  if (length(matching_row_in_swow) == 1){
+    englishdata$bas_tcfirst[i] <- swow$R1.Strength[matching_row_in_swow]
+  } else {
+    englishdata$bas_tcfirst[i] <- NA
+  }
+}
+
+
+#cue2 --> target; bas_tcsecond
+
+
+for (i in (1:nrow(englishdata))){
+  matching_row_in_swow <- which((as.character(swow$ï..cue) == as.character(englishdata$second_cue[i]))&(as.character(swow$response)  == as.character(englishdata$target[i])))  # bas for second cue
+  if (length(matching_row_in_swow) == 1){
+    englishdata$bas_tcsecond[i] <- swow$R1.Strength[matching_row_in_swow]
+  } else {
+    englishdata$bas_tcsecond[i] <- NA
+  }
+}
+
+
+#cue3 --> target; bas_tcthird
+
+for (i in (1:nrow(englishdata))){
+  matching_row_in_swow <- which((as.character(swow$ï..cue) == as.character(englishdata$third_cue[i]))&(as.character(swow$response)  == as.character(englishdata$target[i])))  #bas for third cue
+  if (length(matching_row_in_swow) == 1){
+    englishdata$bas_tcthird[i] <- swow$R1.Strength[matching_row_in_swow]
+  } else {
+    englishdata$bas_tcthird[i] <- NA
+  }
+}
+
+
+#cue4 --> target; bas_tcfourth
+
+for (i in (1:nrow(englishdata))){
+  matching_row_in_swow <- which((as.character(swow$ï..cue) == as.character(englishdata$fourth_cue[i]))&(as.character(swow$response)  == as.character(englishdata$target[i])))  # bas for fourth cue
+  if (length(matching_row_in_swow) == 1){
+    englishdata$bas_tcfourth[i] <- swow$R1.Strength[matching_row_in_swow]
+  } else {
+    englishdata$bas_tcfourth[i] <- NA
+  }
+}
+
+
+#cue5 --> target; bas_tcfifth
+
+for (i in (1:nrow(englishdata))){
+  matching_row_in_swow <- which((as.character(swow$ï..cue) == as.character(englishdata$fifth_cue[i]))&(as.character(swow$response)  == as.character(englishdata$target[i])))  #bas for fifth cue
+  if (length(matching_row_in_swow) == 1){
+    englishdata$bas_tcfifth[i] <- swow$R1.Strength[matching_row_in_swow]
+  } else {
+    englishdata$bas_tcfifth[i] <- NA
+  }
+}
+
+
+#same for responses 1-5 --> cue1-5 
+#response1 --> cue1; bas_crfirst
+
+for (i in (1:nrow(englishdata))){
+  matching_row_in_swow <- which((as.character(swow$ï..cue) == as.character(englishdata$first_response[i]))&(as.character(swow$response)  == as.character(englishdata$first_cue[i])))  
+  if (length(matching_row_in_swow) == 1){
+    englishdata$bas_crfirst[i] <- swow$R1.Strength[matching_row_in_swow]
+  } else {
+    englishdata$bas_crfirst[i] <- NA
+  }
+}
+
+
+#response2 --> cue2; bas_crsecond
+
+for (i in (1:nrow(englishdata))){
+  matching_row_in_swow <- which((as.character(swow$ï..cue) == as.character(englishdata$second_response[i]))&(as.character(swow$response)  == as.character(englishdata$second_cue[i])))  
+  if (length(matching_row_in_swow) == 1){
+    englishdata$bas_crsecond[i] <- swow$R1.Strength[matching_row_in_swow]
+  } else {
+    englishdata$bas_crsecond[i] <- NA
+  }
+}
+
+#response3 --> cue3; bas_crsecond
+
+for (i in (1:nrow(englishdata))){
+  matching_row_in_swow <- which((as.character(swow$ï..cue) == as.character(englishdata$third_response[i]))&(as.character(swow$response)  == as.character(englishdata$third_cue[i])))  #bas for fifth cue
+  if (length(matching_row_in_swow) == 1){
+    englishdata$bas_crthird[i] <- swow$R1.Strength[matching_row_in_swow]
+  } else {
+    englishdata$bas_crthird[i] <- NA
+  }
+}
+
+
+#response4 --> cue4; bas_crfourth
+
+for (i in (1:nrow(englishdata))){
+  matching_row_in_swow <- which((as.character(swow$ï..cue) == as.character(englishdata$fourth_response[i]))&(as.character(swow$response)  == as.character(englishdata$fourth_cue[i])))  
+  if (length(matching_row_in_swow) == 1){
+    englishdata$bas_crfourth[i] <- swow$R1.Strength[matching_row_in_swow]
+  } else {
+    englishdata$bas_crfourth[i] <- NA
+  }
+}
+
+
+#response5 --> cue5; bas_crfifth
+
+for (i in (1:nrow(englishdata))){
+  matching_row_in_swow <- which((as.character(swow$ï..cue) == as.character(englishdata$fifth_response[i]))&(as.character(swow$response)  == as.character(englishdata$fifth_cue[i])))  
+  if (length(matching_row_in_swow) == 1){
+    englishdata$bas_crfifth[i] <- swow$R1.Strength[matching_row_in_swow]
+  } else {
+    englishdata$bas_crfifth[i] <- NA
+  }
+}
+```
+
+
+```{r}
+#replace all empty cells with NA
+
+englishdata[englishdata == ""] <- NA
+
+```
+
+```{r}
+#save edited englishdata with AS from the SWOW database as a csv file
+
+write.csv(englishdata, file="englishdata_withAS.csv")
+```
+
+
+
